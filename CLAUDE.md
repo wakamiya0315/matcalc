@@ -12,12 +12,13 @@ unless a change is listed under "Changed on purpose" in `README.md`.
 ## Common commands
 
 ```bash
-pip install -e ".[mace,benchmark,test]"
+pip install -e ".[mace,torchsim,benchmark,test]"
 pytest tests -m "not mace"          # fast, offline, CPU (EMT potential on tiny datasets)
 pytest tests -m mace                # real MACE model and datasets (GPU node, network)
 ruff check src tests && ruff format --check src tests
 mypy -p matcalc
 matcalc-bench --benchmark elasticity --model MACE-MatPES-PBE-0 --n-samples 5 --out results/
+matcalc-bench --backend torchsim --workers 4 --out results/     # batched GPU run of all four benchmarks
 ```
 
 Heavy runs and GPU tests are done on TSUBAME4 (iqrsh for tests up to ~15 min, `gpu_h` jobs for timing
@@ -35,7 +36,15 @@ and full runs), from a checkout selected with `PYTHONPATH=<checkout>/src`, never
   softening scale, fingerprints). Keep them independent of the simulator.
 - `simulation/` — the simulator interface (`relax`, `single_point`, result dataclasses in `base.py`) and
   `ASESimulator` (FIRE + FrechetCellFilter, one structure at a time; the reference implementation).
-  `as_simulator()` accepts a simulator, an ASE calculator, or a MACE model name.
+  `as_simulator()` accepts a simulator, an ASE calculator, a TorchSim model, or a MACE model name.
+- `simulation/torchsim.py` — `TorchSimSimulator`: batched `relax` (in-flight FIRE + Frechet filter) and
+  `single_point` (binned batches). It must stay step-for-step identical to `ASESimulator`: the FIRE step
+  wrapper (`ase_consistent_fire_step`), `ase_convergence` and `converged_before_relaxing` exist for that
+  and are checked by `tests/test_simulation_torchsim.py` (same energies to 1e-9 eV and same step counts
+  as ASE). Batch capacity is measured per call and cached per metric range; out-of-memory errors split
+  batches instead of failing. `GrowingNeighborList` avoids nvalchemiops' fixed neighbour cap.
+- CPU post-processing (phonopy, fingerprints) runs through `parallel_map` (spawn processes); scripts that
+  use `workers > 1` need an `if __name__ == "__main__":` guard.
 - `datasets.py` (HF download, `sample_subset`), `models.py` (`load_mace`), `cli.py` (`matcalc-bench`).
 
 ## Conventions

@@ -372,9 +372,11 @@ class TorchSimSimulator:
         except RuntimeError as exc:
             if not _out_of_memory(exc):
                 raise
-            del exc
-            gc.collect()
-            torch.cuda.empty_cache()
+            out = None
+        if out is None:
+            # Only now, outside the except block, is the failed forward pass (kept alive by the exception's
+            # traceback) released, so its memory can be freed before the halves are tried.
+            _free_gpu_memory()
             if batch.n_systems == 1:
                 logger.warning("A structure with %d atoms does not fit on the GPU", batch.n_atoms)
                 return [SinglePointResult.failed("GPU out of memory")]
@@ -416,13 +418,11 @@ class TorchSimSimulator:
             except RuntimeError as exc:
                 if not _out_of_memory(exc) or attempt == MAX_OUT_OF_MEMORY_RETRIES or last_try_at_smallest:
                     raise
-                del exc
-                gc.collect()
-                torch.cuda.empty_cache()
-                last_try_at_smallest = capacity <= largest
-                capacity = max(capacity / 2, largest)
-                self.capacities.append(capacity)
-                logger.warning("GPU out of memory; retrying with batch capacity %.4g", capacity)
+            _free_gpu_memory()  # outside the except block, so the failed run can be released
+            last_try_at_smallest = capacity <= largest
+            capacity = max(capacity / 2, largest)
+            self.capacities.append(capacity)
+            logger.warning("GPU out of memory; retrying with batch capacity %.4g", capacity)
         raise AssertionError("unreachable")  # pragma: no cover
 
     def _capacity(self, state: Any, metric: Sequence[float]) -> float:
@@ -455,6 +455,12 @@ class TorchSimSimulator:
         self.capacities.append(capacity)
         logger.info("TorchSim batch capacity: %.4g (%d structures)", capacity, state.n_systems)
         return capacity
+
+
+def _free_gpu_memory() -> None:
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 def _out_of_memory(exc: BaseException) -> bool:
