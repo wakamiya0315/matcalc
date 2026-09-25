@@ -18,11 +18,12 @@ What each benchmark computes, step by step and with units, is described in
 ## Install
 
 ```bash
-pip install -e ".[mace,benchmark]"
+pip install -e ".[mace,torchsim,benchmark]"
 ```
 
-`mace` installs `mace-torch` for `matcalc.load_mace`; `benchmark` installs `matminer`, needed for the
-structural distance of the Equilibrium benchmark. Any other MLIP can be used through its ASE calculator.
+`mace` installs `mace-torch` for `matcalc.load_mace`; `torchsim` installs TorchSim (`torch-sim-atomistic`
+≥ 0.6.2) for batched GPU runs; `benchmark` installs `matminer`, needed for the structural distance of the
+Equilibrium benchmark. Any other MLIP can be used through its ASE calculator (or its TorchSim model).
 
 ## Run
 
@@ -37,6 +38,9 @@ This writes, per benchmark, `<benchmark>_<model>.csv` (the result table), `<benc
 (all rows including structures; an interrupted run resumes from it) and `summary.json` (MAE against DFT
 and wall time per stage).
 
+Add `--backend torchsim` to evaluate many structures per GPU forward pass with TorchSim (see
+[below](#batched-gpu-runs-with-torchsim)).
+
 From Python:
 
 ```python
@@ -47,6 +51,33 @@ benchmark = matcalc.ElasticityBenchmark(n_samples=20, seed=42)
 table = benchmark.run(calculator, "MACE", checkpoint_file="elasticity_MACE.json.gz")
 print(benchmark.summarize(table, "MACE"))
 ```
+
+## Batched GPU runs with TorchSim
+
+`ASESimulator` evaluates one small cell per GPU call, which leaves a GPU mostly idle. `TorchSimSimulator`
+runs the same two operations with [TorchSim](https://github.com/TorchSim/torch-sim), packing many
+structures into each forward pass:
+
+```python
+import matcalc
+from matcalc.simulation import TorchSimSimulator
+
+model = matcalc.load_mace("MACE-MatPES-PBE-0", backend="torchsim")  # same checkpoint as the ASE calculator
+simulator = TorchSimSimulator(model)
+table = matcalc.PhononBenchmark(n_samples=20).run(simulator, "MACE")
+```
+
+- Relaxations use in-flight batching (a relaxed structure leaves the batch and the next one joins) with
+  TorchSim's FIRE on a Frechet cell filter. Three details are adjusted so that every structure follows
+  exactly the path of ASE's FIRE on a `FrechetCellFilter` whatever batch it is in: the first step of a
+  structure joining a running batch, the order in which FIRE's mixing parameter is updated, and ASE's
+  convergence test (transformed atomic forces plus cell forces, checked before the first step too).
+- Single points are packed into batches by size; force-only single points (phonons, softening) skip the
+  stress.
+- The batch capacity is measured on the GPU (TorchSim's memory probe) and a call is retried with half the
+  capacity if the GPU runs out of memory.
+
+Agreement with the ASE path and wall times are reported in [docs/validation.md](docs/validation.md).
 
 Each result table has one row per material: the id, the formula, the DFT values (`<quantity>_DFT`), the
 predictions (`<quantity>_<model>`), and `status_<model>`, which is `ok` or the reason a prediction is
@@ -61,7 +92,8 @@ src/matcalc/
   properties/   the physics as plain functions: elastic fit, phonons, formation energy,
                 softening scale, structural fingerprints
   simulation/   simulators: what evaluates the MLIP. ASESimulator relaxes (FIRE + Frechet cell
-                filter) and computes single points with any ASE calculator, one structure at a time
+                filter) and computes single points with any ASE calculator, one structure at a time;
+                TorchSimSimulator does the same in batches on the GPU
   datasets.py   download and reproducible subsets
   models.py     load_mace()
   cli.py        matcalc-bench
