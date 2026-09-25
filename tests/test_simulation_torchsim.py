@@ -125,3 +125,20 @@ def test_benchmarks_run_with_torchsim(elasticity_dataset: Any, softening_dataset
         ts_table = benchmark(dataset).run(batched, "lj")
         assert list(ts_table["status_lj"]) == list(ase_table["status_lj"])
         assert_allclose(ts_table[f"{column}_lj"], ase_table[f"{column}_lj"], rtol=1e-3)
+
+
+def test_out_of_memory_is_retried_with_half_the_capacity() -> None:
+    simulator = TorchSimSimulator(lj_model(), max_memory_scaler=1e9, show_progress=False)
+    state = simulator._state(starting_structures())
+    capacities = []
+
+    def run(capacity: float) -> str:
+        capacities.append(capacity)
+        if len(capacities) == 1:
+            raise RuntimeError("CUDA out of memory. Tried to allocate 1.62 GiB")
+        return "done"
+
+    assert simulator._batched(state, run) == "done"
+    assert capacities == [1e9, 5e8]
+    with pytest.raises(RuntimeError, match="not memory"):
+        simulator._batched(state, lambda capacity: (_ for _ in ()).throw(RuntimeError("not memory")))

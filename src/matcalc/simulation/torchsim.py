@@ -30,7 +30,7 @@ from matcalc.structures import to_ase_atoms
 from .base import RelaxResult, SinglePointResult
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     from ase import Atoms
     from pymatgen.core import Structure
@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 
 FIRE_F_DEC = 0.5
 """FIRE's time-step reduction factor (the default of TorchSim and ASE)."""
+
+MAX_OUT_OF_MEMORY_RETRIES = 3
+"""How often a batched call is retried with half the batch capacity after running out of GPU memory."""
 
 
 def ase_consistent_fire_step(state: Any, model: ModelInterface, **kwargs: Any) -> Any:
@@ -126,11 +129,10 @@ class TorchSimSimulator:
         if not structures:
             return []
         state = self._state(structures)
-        with _stress_enabled(self.model, enabled=True):
+
+        def optimize(capacity: float) -> tuple[Any, Any]:
             batcher = ts.InFlightAutoBatcher(
-                self.model,
-                memory_scales_with=self.model.memory_scales_with,
-                max_memory_scaler=self._capacity(state),
+                self.model, memory_scales_with=self.model.memory_scales_with, max_memory_scaler=capacity
             )
             final = ts.optimize(
                 system=state,
@@ -143,6 +145,10 @@ class TorchSimSimulator:
                 pbar={"desc": "relax"} if self.show_progress else False,
                 init_kwargs={"cell_filter": ts.CellFilter.frechet},
             )
+            return final, batcher
+
+        with _stress_enabled(self.model, enabled=True):
+            final, batcher = self._batched(state, optimize)
         relaxed = ts.io.state_to_structures(final)
         energies = final.energy.detach().cpu().numpy()
         forces = _per_structure(final.forces, final)
@@ -178,18 +184,16 @@ class TorchSimSimulator:
         if not structures:
             return []
         state = self._state(structures)
-        with _stress_enabled(self.model, enabled=compute_stress):
+
+        def evaluate(capacity: float) -> list[dict[str, Any]]:
             batcher = ts.BinningAutoBatcher(
-                self.model,
-                memory_scales_with=self.model.memory_scales_with,
-                max_memory_scaler=self._capacity(state),
+                self.model, memory_scales_with=self.model.memory_scales_with, max_memory_scaler=capacity
             )
-            outputs = ts.static(
-                system=state,
-                model=self.model,
-                autobatcher=batcher,
-                pbar={"desc": "single point"} if self.show_progress else False,
-            )
+            pbar = {"desc": "single point"} if self.show_progress else False
+            return ts.static(system=state, model=self.model, autobatcher=batcher, pbar=pbar)
+
+        with _stress_enabled(self.model, enabled=compute_stress):
+            outputs = self._batched(state, evaluate)
         return [
             SinglePointResult(
                 energy=float(out["potential_energy"].item()),
@@ -206,7 +210,28 @@ class TorchSimSimulator:
             dtype=self.model.dtype,
         )
 
-    def _capacity(self, state: Any) -> float:
+    def _batched[T](self, state: Any, run: Callable[[float], T]) -> T:
+        """Run ``run(capacity)`` on the GPU; after an out-of-memory error, retry with half the capacity.
+
+        TorchSim itself cannot recover from running out of GPU memory in the middle of a run, and the
+        free memory can change while a job runs (another process on a shared GPU, fragmentation).
+        """
+        metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
+        largest = max(metric)
+        capacity = self._capacity(state, metric)
+        for attempt in range(MAX_OUT_OF_MEMORY_RETRIES + 1):
+            try:
+                return run(capacity)
+            except RuntimeError as exc:
+                if not _out_of_memory(exc) or attempt == MAX_OUT_OF_MEMORY_RETRIES or capacity <= largest:
+                    raise
+                torch.cuda.empty_cache()
+                capacity = max(capacity / 2, largest)
+                self.capacities.append(capacity)
+                logger.warning("GPU out of memory; retrying with batch capacity %.4g", capacity)
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def _capacity(self, state: Any, metric: Sequence[float]) -> float:
         """Batch capacity for the structures of one call, in TorchSim's memory metric.
 
         Memory per unit of the metric differs between many tiny cells and a few large supercells, so the
@@ -216,16 +241,19 @@ class TorchSimSimulator:
         """
         if self.max_memory_scaler is not None:
             capacity = self.max_memory_scaler
+        elif self.model.device.type != "cuda":
+            capacity = float(sum(metric)) + 1.0  # no GPU memory to measure: one batch
         else:
-            metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
-            if self.model.device.type != "cuda":
-                capacity = float(sum(metric)) + 1.0  # no GPU memory to measure: one batch
-            else:
-                measured = estimate_max_memory_scaler(state, self.model, metric) * self.memory_padding
-                capacity = max(measured, *metric)
+            measured = estimate_max_memory_scaler(state, self.model, list(metric)) * self.memory_padding
+            capacity = max(measured, *metric)
         self.capacities.append(capacity)
         logger.info("TorchSim batch capacity: %.4g (%d structures)", capacity, state.n_systems)
         return capacity
+
+
+def _out_of_memory(exc: BaseException) -> bool:
+    # Out-of-memory errors raised inside TorchScript models arrive as plain RuntimeErrors.
+    return any(message in str(exc) for message in ("out of memory", "Failed to allocate"))
 
 
 def _per_structure(per_atom: torch.Tensor, state: Any) -> list[np.ndarray]:
