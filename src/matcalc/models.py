@@ -1,15 +1,14 @@
-"""Load MACE foundation models by name.
+"""Load MACE foundation models by name, for ASE or for TorchSim.
 
-Any ASE calculator can be benchmarked; this module only makes the MACE models used for validating
-this fork one call away.
+Any ASE calculator (or TorchSim model) can be benchmarked; this module only makes the MACE models used
+for validating this fork one call away. Both backends load the same checkpoint file, so the ASE and the
+TorchSim runs of a benchmark evaluate exactly the same potential.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
-
-if TYPE_CHECKING:
-    from ase.calculators.calculator import Calculator
+from pathlib import Path
+from typing import Any, Literal
 
 MACE_MODELS: dict[str, str] = {
     "MACE-MatPES-PBE-0": "mace-matpes-pbe-0",
@@ -24,24 +23,35 @@ MACE_MODELS: dict[str, str] = {
 def load_mace(
     name: str = "MACE-MatPES-PBE-0",
     *,
+    backend: Literal["ase", "torchsim"] = "ase",
     device: str | None = None,
     dtype: Literal["float64", "float32"] = "float64",
-) -> Calculator:
-    """Load a MACE foundation model as an ASE calculator.
+) -> Any:
+    """Load a MACE foundation model.
 
     Args:
         name: A key of ``MACE_MODELS``, any model name accepted by ``mace_mp``, or a path to a
             ``.model`` file. The default, MACE-MatPES-PBE-0, is trained on MatPES (PBE) data and is
             distributed under the Academic Software License.
+        backend: ``"ase"`` for an ASE calculator (use with ``ASESimulator``), ``"torchsim"`` for a
+            TorchSim model (use with ``TorchSimSimulator``; needs ``torch-sim-atomistic``).
         device: ``"cuda"`` or ``"cpu"``; default: CUDA when available.
         dtype: Floating-point precision of the model. float64 is the default because finite
             displacements (phonons) and small strains (elasticity) need it.
 
     Returns:
-        The MACE ASE calculator.
+        The MACE ASE calculator, or the MACE TorchSim model.
     """
     import torch
     from mace.calculators import mace_mp
+    from mace.calculators.foundations_models import download_mace_mp_checkpoint
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    return mace_mp(model=MACE_MODELS.get(name, name), device=device, default_dtype=dtype)
+    model = MACE_MODELS.get(name, name)
+    if backend == "ase":
+        return mace_mp(model=model, device=device, default_dtype=dtype)
+
+    from torch_sim.models.mace import MaceModel
+
+    checkpoint = model if Path(model).is_file() else download_mace_mp_checkpoint(model)
+    return MaceModel(model=checkpoint, device=torch.device(device), dtype=getattr(torch, dtype))

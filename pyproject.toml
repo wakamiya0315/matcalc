@@ -39,6 +39,8 @@ version = "0.5.1"
 benchmark = ["matminer>=0.10.1"]
 # The MACE models used to validate this fork (matcalc.load_mace).
 mace = ["mace-torch>=0.3.16"]
+# Batched GPU simulator (matcalc.simulation.TorchSimSimulator). 0.6.2 fixed FIRE with cell filters.
+torchsim = ["torch-sim-atomistic>=0.6.2"]
 test = ["pytest>=8.3.5", "matminer>=0.10.1"]
 
 [project.scripts]

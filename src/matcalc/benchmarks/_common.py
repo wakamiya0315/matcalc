@@ -78,6 +78,8 @@ class Benchmark:
     """Quantities summarized by ``summarize``: ``"error"`` (absolute error vs DFT) or ``"value"``."""
     default_chunk_size: ClassVar[int] = 100
     """Materials per chunk (a checkpoint is written after each chunk)."""
+    batched_chunk_size: ClassVar[int] = 1_000_000
+    """Materials per chunk for batched simulators (TorchSim): large, so the GPU stays full."""
 
     def __init__(self, dataset: str | Path | None = None, *, n_samples: int | None = None, seed: int = 42) -> None:
         """
@@ -137,11 +139,13 @@ class Benchmark:
         """Run the benchmark for one model.
 
         Args:
-            model: An ASE calculator, a simulator, or a MACE model name (see ``matcalc.load_mace``).
+            model: An ASE calculator, a TorchSim model, a simulator, or a MACE model name (see
+                ``matcalc.load_mace``).
             model_name: Label of the model; predicted columns are named ``<quantity>_<model_name>``.
             checkpoint_file: JSON file (``.json`` or ``.json.gz``) with the rows finished so far.
                 It is written after every chunk; if it exists, finished materials are skipped.
-            chunk_size: Materials per chunk (default: ``default_chunk_size``).
+            chunk_size: Materials per chunk (default: ``default_chunk_size``, or ``batched_chunk_size``
+                for batched simulators).
 
         Returns:
             One row per material: id, formula, ``<quantity>_DFT`` references and
@@ -153,7 +157,9 @@ class Benchmark:
         todo = [material for material in self.materials if material.material_id not in finished]
         if todo:
             self.prepare(simulator, checkpoint.cache)
-        size = chunk_size or self.default_chunk_size
+        size = chunk_size or (
+            self.batched_chunk_size if getattr(simulator, "batched", False) else self.default_chunk_size
+        )
         for start in range(0, len(todo), size):
             chunk = todo[start : start + size]
             predictions = self.evaluate(chunk, simulator)

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from .benchmarks import BENCHMARKS
 from .models import load_mace
+from .simulation import ASESimulator
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -37,6 +38,15 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--label", default=None, help="suffix of the predicted columns (default: the model name)")
     parser.add_argument("--device", default=None, help="cuda or cpu (default: cuda if available)")
     parser.add_argument("--dtype", default="float64", choices=("float64", "float32"))
+    parser.add_argument(
+        "--backend",
+        default="ase",
+        choices=("ase", "torchsim"),
+        help="ase: one structure at a time (reference); torchsim: many structures per GPU forward pass",
+    )
+    parser.add_argument(
+        "--max-memory-scaler", type=float, default=None, help="TorchSim batch capacity (default: measured on the GPU)"
+    )
     parser.add_argument("--n-samples", type=int, default=None, help="random subset size (default: all)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--chunk-size", type=int, default=None, help="materials per checkpoint")
@@ -46,7 +56,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 def _versions() -> dict[str, str]:
     versions = {"python": platform.python_version()}
-    for package in ("matcalc", "ase", "pymatgen", "phonopy", "mace-torch", "torch"):
+    for package in ("matcalc", "ase", "pymatgen", "phonopy", "mace-torch", "torch", "torch-sim-atomistic"):
         try:
             versions[package] = version(package)
         except PackageNotFoundError:
@@ -64,13 +74,19 @@ def main(argv: Sequence[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     label = args.label or Path(args.model).stem
     args.out.mkdir(parents=True, exist_ok=True)
-    calculator = load_mace(args.model, device=args.device, dtype=args.dtype)
+    model = load_mace(args.model, backend=args.backend, device=args.device, dtype=args.dtype)
+    if args.backend == "torchsim":
+        from .simulation.torchsim import TorchSimSimulator
+
+        simulator: Any = TorchSimSimulator(model, max_memory_scaler=args.max_memory_scaler)
+    else:
+        simulator = ASESimulator(model)
 
     summary: dict[str, Any] = {
         "model": args.model,
         "label": label,
         "dtype": args.dtype,
-        "simulator": "ase",
+        "simulator": args.backend,
         "n_samples": args.n_samples,
         "seed": args.seed,
         "versions": _versions(),
@@ -80,7 +96,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         benchmark = BENCHMARKS[name](n_samples=args.n_samples, seed=args.seed)
         start = time.perf_counter()
         table = benchmark.run(
-            calculator, label, checkpoint_file=args.out / f"{name}_{label}.json.gz", chunk_size=args.chunk_size
+            simulator, label, checkpoint_file=args.out / f"{name}_{label}.json.gz", chunk_size=args.chunk_size
         )
         wall_time = time.perf_counter() - start
         csv_columns = [c for c in table.columns if not c.startswith("structure_")]

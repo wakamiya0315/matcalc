@@ -52,6 +52,7 @@ class PhononBenchmark(Benchmark):
     reference_columns = ("CV",)
     summary_metrics: ClassVar[dict[str, str]] = {"CV": "error"}
     default_chunk_size = 20
+    batched_chunk_size = 100  # bounded: displaced supercells and force constants of a chunk stay in memory
 
     def __init__(
         self,
