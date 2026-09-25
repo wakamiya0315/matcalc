@@ -182,6 +182,7 @@ class TorchSimSimulator:
         self.steps_between_swaps = steps_between_swaps
         self.show_progress = show_progress
         self.capacities: list[float] = []
+        self._measured: dict[bool, tuple[float, float, float]] = {}  # stress on/off: (min, max metric, capacity)
 
     def relax(self, structures: Sequence[Structure], *, fmax: float, max_steps: int) -> list[RelaxResult]:
         """Relax atoms and cell of every structure with FIRE on a Frechet cell filter, in batches.
@@ -319,9 +320,11 @@ class TorchSimSimulator:
         """Batch capacity for the structures of one call, in TorchSim's memory metric.
 
         Memory per unit of the metric differs between many tiny cells and a few large supercells, so the
-        capacity is measured for each call on its smallest and its largest structure (TorchSim probes
-        with growing copies of each until the GPU runs out of memory and backs off two steps). Measured
-        or given, it is never below the largest structure, which can then always run on its own.
+        capacity is measured on the smallest and the largest structure of a call (TorchSim probes with
+        growing copies of each until the GPU runs out of memory and backs off two steps). A later call
+        whose structures lie within the range already measured (with the same stress setting) reuses the
+        capacity; a call with new extremes is measured again. Measured or given, the capacity is never
+        below the largest structure, which can then always run on its own.
         """
         # TorchSim recomputes the metric structure by structure, which can differ in the last digit.
         largest = max(metric) * (1 + 1e-6)
@@ -330,8 +333,16 @@ class TorchSimSimulator:
         elif self.model.device.type != "cuda":
             capacity = float(sum(metric)) * (1 + 1e-6) + 1.0  # no GPU memory to measure: one batch
         else:
-            measured = estimate_max_memory_scaler(state, self.model, list(metric)) * self.memory_padding
-            capacity = max(measured, largest)
+            low, high, stress = min(metric), max(metric), self.model.compute_stress
+            known = self._measured.get(stress)
+            if known is not None and known[0] <= low and high <= known[1]:
+                capacity = known[2]
+            else:
+                capacity = estimate_max_memory_scaler(state, self.model, list(metric)) * self.memory_padding
+                if known is not None:  # the range now covers both calls: keep the smaller capacity
+                    low, high, capacity = min(low, known[0]), max(high, known[1]), min(capacity, known[2])
+                self._measured[stress] = (low, high, capacity)
+            capacity = max(capacity, largest)
         self.capacities.append(capacity)
         logger.info("TorchSim batch capacity: %.4g (%d structures)", capacity, state.n_systems)
         return capacity
