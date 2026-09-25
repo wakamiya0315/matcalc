@@ -21,9 +21,9 @@ Dataset: `wbm-random-pbe52-equilibrium-2025.1.json.gz`, 972 WBM compounds (2–4
    structures in `elemental_refs/MP-PBE-Element-Refs.json.gz` are relaxed (`fmax` = 0.05 eV/Å, at most 500
    steps). The lowest energy per atom of each element is its chemical potential μ_i. (With the full dataset
    this is 769 structures; carbon alone has 62.)
-2. **Relaxation.** Every atom of each DFT-relaxed compound is moved by 0.1 Å in a random direction
-   (generator seeded with `seed`), then atoms and cell are relaxed (0.05 eV/Å, 500 steps). A compound whose
-   relaxation does not converge gets no prediction.
+2. **Relaxation.** Every atom of each DFT-relaxed compound is moved in a random direction by a random
+   distance of at most 0.1 Å (pymatgen `Structure.perturb`, generator seeded with `seed`), then atoms and
+   cell are relaxed (0.05 eV/Å, 500 steps). A compound whose relaxation does not converge gets no prediction.
 3. **Formation energy.** E_form = (E − Σ_i n_i μ_i) / N, in eV/atom.
 4. **Structural distance.** `d` is the Euclidean distance between matminer `SiteStatsFingerprint`
    vectors (CrystalNN "ops" preset; mean, std, min, max over sites) of the MLIP- and DFT-relaxed structures.

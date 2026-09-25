@@ -4,9 +4,9 @@ Recipe (settings as in upstream matcalc):
 
 1. Relax the candidate ground-state structures of every element in the dataset (Materials Project
    PBE references); the lowest energy per atom of each element is its chemical potential μ_i.
-2. Move every atom of each DFT-relaxed compound by 0.1 Å in a random direction, then relax atoms and
-   cell (FIRE, fmax = 0.05 eV/Å, at most 500 steps). Compounds whose relaxation does not converge get
-   no prediction.
+2. Move every atom of each DFT-relaxed compound in a random direction by a random distance of at most
+   0.1 Å, then relax atoms and cell (FIRE, fmax = 0.05 eV/Å, at most 500 steps). Compounds whose
+   relaxation does not converge get no prediction.
 3. Formation energy E_form = (E - Σ_i n_i μ_i) / N (eV/atom).
 4. Distance d between the local-environment fingerprints of the MLIP- and the DFT-relaxed structure.
 """
@@ -38,7 +38,7 @@ class EquilibriumBenchmark(Benchmark):
     Attributes:
         fmax: Force threshold of the relaxations (eV/Å).
         max_steps: Maximum number of FIRE steps per relaxation.
-        perturb_distance: How far every atom is moved before relaxing (Å); 0 or None to skip.
+        perturb_distance: Largest distance an atom is moved before relaxing (Å); 0 or None to skip.
         reference_energies: Chemical potential of each element (eV/atom), filled by ``prepare``.
     """
 
@@ -68,7 +68,7 @@ class EquilibriumBenchmark(Benchmark):
                 which other compounds are in the run).
             fmax: Force threshold of the relaxations (eV/Å).
             max_steps: Maximum number of FIRE steps per relaxation.
-            perturb_distance: How far every atom is moved before relaxing (Å); 0 or None to skip.
+            perturb_distance: Largest distance an atom is moved before relaxing (Å); 0 or None to skip.
         """
         super().__init__(dataset, n_samples=n_samples, seed=seed)
         self.fmax = fmax
@@ -142,8 +142,11 @@ class EquilibriumBenchmark(Benchmark):
     def _displaced(self, structure: Structure) -> Structure:
         if not self.perturb_distance:
             return structure
-        # copy() first: perturb() works in place and must not change the dataset structure.
-        return structure.copy().perturb(distance=self.perturb_distance, seed=self.seed)
+        # copy() first: perturb() works in place and must not change the dataset structure. Each atom moves
+        # in a random direction by a distance drawn uniformly from [0, perturb_distance]; min_distance=0.0
+        # is pymatgen's current default (the one upstream matcalc gets) and is passed explicitly so the
+        # benchmark does not change if that default changes.
+        return structure.copy().perturb(distance=self.perturb_distance, min_distance=0.0, seed=self.seed)
 
     def _predict(self, material: Material, result: RelaxResult) -> dict[str, Any]:
         steps = {"relax_steps": result.n_steps}
