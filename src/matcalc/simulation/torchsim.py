@@ -217,7 +217,7 @@ class TorchSimSimulator:
         free memory can change while a job runs (another process on a shared GPU, fragmentation).
         """
         metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
-        largest = max(metric)
+        largest = max(metric) * (1 + 1e-6)
         capacity = self._capacity(state, metric)
         for attempt in range(MAX_OUT_OF_MEMORY_RETRIES + 1):
             try:
@@ -239,13 +239,15 @@ class TorchSimSimulator:
         with growing copies of each until the GPU runs out of memory and backs off two steps). Measured
         or given, it is never below the largest structure, which can then always run on its own.
         """
+        # TorchSim recomputes the metric structure by structure, which can differ in the last digit.
+        largest = max(metric) * (1 + 1e-6)
         if self.max_memory_scaler is not None:
-            capacity = max(self.max_memory_scaler, *metric)
+            capacity = max(self.max_memory_scaler, largest)
         elif self.model.device.type != "cuda":
-            capacity = float(sum(metric)) + 1.0  # no GPU memory to measure: one batch
+            capacity = float(sum(metric)) * (1 + 1e-6) + 1.0  # no GPU memory to measure: one batch
         else:
             measured = estimate_max_memory_scaler(state, self.model, list(metric)) * self.memory_padding
-            capacity = max(measured, *metric)
+            capacity = max(measured, largest)
         self.capacities.append(capacity)
         logger.info("TorchSim batch capacity: %.4g (%d structures)", capacity, state.n_systems)
         return capacity
