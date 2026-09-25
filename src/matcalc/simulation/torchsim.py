@@ -15,6 +15,7 @@ TorchSim needs the MLIP as a TorchSim model (``torch_sim.models.interface.ModelI
 
 from __future__ import annotations
 
+import gc
 import logging
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
@@ -182,6 +183,10 @@ class TorchSimSimulator:
         self.steps_between_swaps = steps_between_swaps
         self.show_progress = show_progress
         self.capacities: list[float] = []
+        if model.device.type == "cuda":
+            # Batches of varying size fragment PyTorch's CUDA cache (up to a third of the GPU was seen
+            # reserved but unusable); expandable segments avoid that.
+            torch.cuda.memory._set_allocator_settings("expandable_segments:True")  # noqa: SLF001
         self._measured: dict[bool, tuple[float, float, float]] = {}  # stress on/off: (min, max metric, capacity)
 
     def relax(self, structures: Sequence[Structure], *, fmax: float, max_steps: int) -> list[RelaxResult]:
@@ -296,21 +301,27 @@ class TorchSimSimulator:
         )
 
     def _batched[T](self, state: Any, run: Callable[[float], T]) -> T:
-        """Run ``run(capacity)`` on the GPU; after an out-of-memory error, retry with half the capacity.
+        """Run ``run(capacity)`` on the GPU; after an out-of-memory error, free memory and retry.
 
         TorchSim itself cannot recover from running out of GPU memory in the middle of a run, and the
-        free memory can change while a job runs (another process on a shared GPU, fragmentation).
+        usable memory can change while a job runs (fragmentation of PyTorch's cache, another process on a
+        shared GPU). Each retry releases the cached memory and halves the capacity, down to the largest
+        structure; at that size one more attempt is made before giving up.
         """
         metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
         largest = max(metric) * (1 + 1e-6)
         capacity = self._capacity(state, metric)
+        last_try_at_smallest = False
         for attempt in range(MAX_OUT_OF_MEMORY_RETRIES + 1):
             try:
                 return run(capacity)
             except RuntimeError as exc:
-                if not _out_of_memory(exc) or attempt == MAX_OUT_OF_MEMORY_RETRIES or capacity <= largest:
+                if not _out_of_memory(exc) or attempt == MAX_OUT_OF_MEMORY_RETRIES or last_try_at_smallest:
                     raise
+                del exc
+                gc.collect()
                 torch.cuda.empty_cache()
+                last_try_at_smallest = capacity <= largest
                 capacity = max(capacity / 2, largest)
                 self.capacities.append(capacity)
                 logger.warning("GPU out of memory; retrying with batch capacity %.4g", capacity)

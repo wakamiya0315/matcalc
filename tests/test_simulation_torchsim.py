@@ -152,6 +152,17 @@ def test_out_of_memory_is_retried_with_half_the_capacity() -> None:
 
     assert simulator._batched(state, run) == "done"
     assert capacities == [1e9, 5e8]
+
+    at_largest = TorchSimSimulator(lj_model(), max_memory_scaler=1e-3, show_progress=False)
+    attempts = []
+
+    def always_out_of_memory(capacity: float) -> str:
+        attempts.append(capacity)
+        raise RuntimeError("CUDA out of memory")
+
+    with pytest.raises(RuntimeError, match="out of memory"):
+        at_largest._batched(state, always_out_of_memory)
+    assert len(attempts) == 2  # one more attempt at the smallest possible capacity, then give up
     tiny = TorchSimSimulator(lj_model(), max_memory_scaler=1e-3, show_progress=False)
     assert tiny._batched(state, lambda capacity: capacity) > 1e-3  # never below the largest structure
 

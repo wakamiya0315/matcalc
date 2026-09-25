@@ -78,6 +78,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         argv: Command-line arguments (default: ``sys.argv[1:]``).
     """
     args = _parse_args(argv)
+    # Must be set before PyTorch touches the GPU: batches of varying size fragment its CUDA cache otherwise.
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     label = args.label or Path(args.model).stem
     args.out.mkdir(parents=True, exist_ok=True)
