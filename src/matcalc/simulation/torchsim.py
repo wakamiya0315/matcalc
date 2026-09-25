@@ -236,11 +236,11 @@ class TorchSimSimulator:
 
         Memory per unit of the metric differs between many tiny cells and a few large supercells, so the
         capacity is measured for each call on its smallest and its largest structure (TorchSim probes
-        with growing copies of each until the GPU runs out of memory and backs off two steps). It is
-        never below the largest structure, which can then always run on its own.
+        with growing copies of each until the GPU runs out of memory and backs off two steps). Measured
+        or given, it is never below the largest structure, which can then always run on its own.
         """
         if self.max_memory_scaler is not None:
-            capacity = self.max_memory_scaler
+            capacity = max(self.max_memory_scaler, *metric)
         elif self.model.device.type != "cuda":
             capacity = float(sum(metric)) + 1.0  # no GPU memory to measure: one batch
         else:

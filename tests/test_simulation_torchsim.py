@@ -140,6 +140,8 @@ def test_out_of_memory_is_retried_with_half_the_capacity() -> None:
 
     assert simulator._batched(state, run) == "done"
     assert capacities == [1e9, 5e8]
+    tiny = TorchSimSimulator(lj_model(), max_memory_scaler=1e-3, show_progress=False)
+    assert tiny._batched(state, lambda capacity: capacity) > 1e-3  # never below the largest structure
 
     def broken(capacity: float) -> str:
         raise RuntimeError(f"not memory ({capacity})")
