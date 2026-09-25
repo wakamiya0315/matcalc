@@ -25,7 +25,7 @@ import torch_sim as ts
 from torch_sim.autobatching import calculate_memory_scalers, estimate_max_memory_scaler
 from torch_sim.optimizers import fire_init, fire_step
 
-from matcalc.structures import to_ase_atoms
+from matcalc.structures import to_ase_atoms, to_pmg_structure
 
 from .base import RelaxResult, SinglePointResult
 
@@ -69,6 +69,54 @@ def ase_consistent_fire_step(state: Any, model: ModelInterface, **kwargs: Any) -
         new_structures[state.system_idx[new_atoms]] = True
         state.dt[new_structures] = state.dt[new_structures] / kwargs.get("f_dec", FIRE_F_DEC)
     return fire_step(state, model, **kwargs)
+
+
+def ase_convergence(fmax: float) -> Callable[..., torch.Tensor]:
+    """Convergence test of ASE's FIRE on a ``FrechetCellFilter``, for a batch of structures.
+
+    ASE stops when every row of the filter's forces is below ``fmax``: the atomic forces transformed by
+    the deformation gradient (``forces @ F``) and the three cell forces. TorchSim's own force criterion
+    uses the untransformed atomic forces, which can stop a relaxation one step earlier or later.
+
+    Args:
+        fmax: Force threshold (eV/Å).
+
+    Returns:
+        A TorchSim convergence function: state → boolean tensor, one entry per structure.
+    """
+
+    def converged(state: Any, last_energy: torch.Tensor | None = None) -> torch.Tensor:  # noqa: ARG001
+        norms = state.deform_grad_forces().norm(dim=1)
+        atom_max = torch.zeros(state.n_systems, device=state.device, dtype=state.dtype).scatter_reduce(
+            0, state.system_idx, norms, reduce="amax"
+        )
+        cell_max = state.cell_forces.norm(dim=2).max(dim=1).values
+        return (atom_max < fmax) & (cell_max < fmax)
+
+    return converged
+
+
+def converged_before_relaxing(structure: Structure | Atoms, start: SinglePointResult, fmax: float) -> bool:
+    """ASE's convergence test before the first FIRE step, when the deformation gradient is the identity.
+
+    The cell forces of a Frechet cell filter are then the virial (-volume x stress) divided by the number
+    of atoms.
+    ASE takes no step at all for such a structure, whereas TorchSim always takes at least one.
+
+    Args:
+        structure: The structure.
+        start: Its single point (forces and stress).
+        fmax: Force threshold (eV/Å).
+
+    Returns:
+        Whether ASE would stop before the first step.
+    """
+    if start.error is not None or start.forces is None or start.stress is None:
+        return False
+    atoms = to_ase_atoms(structure)
+    cell_forces = -atoms.get_volume() * np.asarray(start.stress) / len(atoms)
+    largest = max(np.linalg.norm(start.forces, axis=1).max(), np.linalg.norm(cell_forces, axis=1).max())
+    return bool(largest < fmax)
 
 
 class TorchSimSimulator:
@@ -128,6 +176,22 @@ class TorchSimSimulator:
         """
         if not structures:
             return []
+        # Like ASE, structures that are already relaxed are not moved at all.
+        starts = self.single_point(structures, compute_stress=True)
+        todo = [
+            i
+            for i, (s, r) in enumerate(zip(structures, starts, strict=True))
+            if not converged_before_relaxing(s, r, fmax)
+        ]
+        results = [_unmoved(structures[i], starts[i], fmax) for i in range(len(structures))]
+        if todo:
+            for i, relaxed in zip(
+                todo, self._relax_batched([structures[i] for i in todo], fmax, max_steps), strict=True
+            ):
+                results[i] = relaxed
+        return results
+
+    def _relax_batched(self, structures: Sequence[Structure], fmax: float, max_steps: int) -> list[RelaxResult]:
         state = self._state(structures)
 
         def optimize(capacity: float) -> tuple[Any, Any]:
@@ -138,7 +202,7 @@ class TorchSimSimulator:
                 system=state,
                 model=self.model,
                 optimizer=(fire_init, ase_consistent_fire_step),
-                convergence_fn=ts.generate_force_convergence_fn(force_tol=fmax, include_cell_forces=True),
+                convergence_fn=ase_convergence(fmax),
                 max_steps=max_steps,
                 steps_between_swaps=self.steps_between_swaps,
                 autobatcher=batcher,
@@ -256,6 +320,21 @@ class TorchSimSimulator:
 def _out_of_memory(exc: BaseException) -> bool:
     # Out-of-memory errors raised inside TorchScript models arrive as plain RuntimeErrors.
     return any(message in str(exc) for message in ("out of memory", "Failed to allocate"))
+
+
+def _unmoved(structure: Structure | Atoms, start: SinglePointResult, fmax: float) -> RelaxResult:
+    if start.error is not None or start.forces is None:
+        return RelaxResult.failed(start.error or "single point failed")
+    max_force = float(np.linalg.norm(start.forces, axis=1).max())
+    return RelaxResult(
+        structure=to_pmg_structure(structure),
+        energy=start.energy,
+        forces=start.forces,
+        stress=start.stress,
+        max_force=max_force,
+        converged=max_force <= fmax,
+        n_steps=0,
+    )
 
 
 def _per_structure(per_atom: torch.Tensor, state: Any) -> list[np.ndarray]:

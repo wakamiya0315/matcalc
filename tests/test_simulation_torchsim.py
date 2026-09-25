@@ -88,8 +88,20 @@ def test_relax_matches_ase_fire() -> None:
     for ref, got in zip(reference, batched, strict=True):
         assert got.converged == ref.converged
         assert got.energy == pytest.approx(ref.energy, abs=1e-6)
-        assert_allclose(got.structure.lattice.matrix, ref.structure.lattice.matrix, atol=1e-4)
-        assert abs(got.n_steps - ref.n_steps) <= 1
+        assert_allclose(got.structure.lattice.matrix, ref.structure.lattice.matrix, atol=1e-5)
+        assert got.n_steps == ref.n_steps  # same convergence test as ASE
+
+
+def test_already_relaxed_structures_are_not_moved() -> None:
+    model = lj_model()
+    (relaxed,) = TorchSimSimulator(model, show_progress=False).relax([rattled("Cu", 0)], fmax=0.01, max_steps=300)
+    for simulator in (
+        ASESimulator(TorchSimModelCalculator(model), show_progress=False),
+        TorchSimSimulator(model, show_progress=False),
+    ):
+        (again,) = simulator.relax([relaxed.structure], fmax=0.01, max_steps=300)
+        assert again.n_steps == 0
+        assert again.energy == pytest.approx(relaxed.energy, abs=1e-10)
 
 
 def test_structures_joining_a_running_batch_follow_the_same_path() -> None:
