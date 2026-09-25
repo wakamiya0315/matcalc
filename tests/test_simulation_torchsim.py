@@ -140,5 +140,9 @@ def test_out_of_memory_is_retried_with_half_the_capacity() -> None:
 
     assert simulator._batched(state, run) == "done"
     assert capacities == [1e9, 5e8]
-    with pytest.raises(RuntimeError, match="not memory"):
-        simulator._batched(state, lambda capacity: (_ for _ in ()).throw(RuntimeError("not memory")))
+
+    def broken(capacity: float) -> str:
+        raise RuntimeError(f"not memory ({capacity})")
+
+    with pytest.raises(RuntimeError, match="not memory"):  # other errors are not retried
+        simulator._batched(state, broken)
