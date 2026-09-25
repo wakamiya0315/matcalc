@@ -26,6 +26,7 @@ import torch_sim as ts
 import torch_sim.math as tsm
 from torch_sim.autobatching import calculate_memory_scalers, estimate_max_memory_scaler
 from torch_sim.optimizers import fire_init, fire_step
+from tqdm import tqdm
 
 from matcalc.structures import to_ase_atoms, to_pmg_structure
 
@@ -274,23 +275,49 @@ class TorchSimSimulator:
         if not structures:
             return []
         state = self._state(structures)
-
-        def evaluate(capacity: float) -> list[dict[str, Any]]:
-            batcher = ts.BinningAutoBatcher(
-                self.model, memory_scales_with=self.model.memory_scales_with, max_memory_scaler=capacity
-            )
-            pbar = {"desc": "single point"} if self.show_progress else False
-            return ts.static(system=state, model=self.model, autobatcher=batcher, pbar=pbar)
-
+        metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
+        results: list[SinglePointResult | None] = [None] * state.n_systems
         with _stress_enabled(self.model, enabled=compute_stress):
-            outputs = self._batched(state, evaluate)
-        return [
-            SinglePointResult(
-                energy=float(out["potential_energy"].item()),
-                forces=out["forces"].detach().cpu().numpy(),
-                stress=out["stress"][0].detach().cpu().numpy() if compute_stress else None,
+            batcher = ts.BinningAutoBatcher(
+                self.model,
+                memory_scales_with=self.model.memory_scales_with,
+                max_memory_scaler=self._capacity(state, metric),
             )
-            for out in outputs
+            batcher.load_states(state)
+            bins = tqdm(batcher, total=len(batcher.index_bins), desc="single point", disable=not self.show_progress)
+            for batch, indices in bins:
+                for index, result in zip(indices, self._evaluate(batch, compute_stress=compute_stress), strict=True):
+                    results[index] = result
+        return [result if result is not None else SinglePointResult.failed("not evaluated") for result in results]
+
+    def _evaluate(self, batch: Any, *, compute_stress: bool) -> list[SinglePointResult]:
+        """One forward pass over a batch; if the GPU runs out of memory, each half is evaluated separately.
+
+        A structure that does not fit on the GPU even on its own gets a failed result instead of
+        stopping the whole calculation.
+        """
+        try:
+            out = self.model(batch)
+        except RuntimeError as exc:
+            if not _out_of_memory(exc):
+                raise
+            del exc
+            gc.collect()
+            torch.cuda.empty_cache()
+            if batch.n_systems == 1:
+                logger.warning("A structure with %d atoms does not fit on the GPU", batch.n_atoms)
+                return [SinglePointResult.failed("GPU out of memory")]
+            half = batch.n_systems // 2
+            logger.warning("GPU out of memory; splitting a batch of %d structures", batch.n_systems)
+            return self._evaluate(batch[list(range(half))], compute_stress=compute_stress) + self._evaluate(
+                batch[list(range(half, batch.n_systems))], compute_stress=compute_stress
+            )
+        energies = out["energy"].detach().cpu().numpy()
+        forces = _per_structure(out["forces"], batch)
+        stresses = out["stress"].detach().cpu().numpy() if compute_stress else [None] * batch.n_systems
+        return [
+            SinglePointResult(energy=float(energy), forces=force, stress=stress)
+            for energy, force, stress in zip(energies, forces, stresses, strict=True)
         ]
 
     def _state(self, structures: Sequence[Structure | Atoms]) -> Any:

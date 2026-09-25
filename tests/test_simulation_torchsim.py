@@ -171,3 +171,32 @@ def test_out_of_memory_is_retried_with_half_the_capacity() -> None:
 
     with pytest.raises(RuntimeError, match="not memory"):  # other errors are not retried
         simulator._batched(state, broken)
+
+
+class _SmallBatchesOnly:
+    """A model that 'runs out of memory' on batches of more than two structures."""
+
+    def __init__(self, inner: Any) -> None:
+        object.__setattr__(self, "inner", inner)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        setattr(self.inner, name, value)
+
+    def __call__(self, state: Any) -> Any:
+        if state.n_systems > 2:
+            raise RuntimeError("CUDA out of memory (test)")
+        return self.inner(state)
+
+
+def test_single_point_splits_batches_that_do_not_fit() -> None:
+    model = lj_model()
+    cells = [*starting_structures(), structure("Cu1")]
+    reference = TorchSimSimulator(model, show_progress=False).single_point(cells)
+    split = TorchSimSimulator(_SmallBatchesOnly(model), show_progress=False).single_point(cells)
+    for ref, got in zip(reference, split, strict=True):
+        assert got.error is None
+        assert got.energy == pytest.approx(ref.energy, abs=1e-12)
+        assert_allclose(got.forces, ref.forces, atol=1e-12)
