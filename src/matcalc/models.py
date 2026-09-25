@@ -56,5 +56,13 @@ def load_mace(
 
     from torch_sim.models.mace import MaceModel
 
+    from matcalc.simulation.torchsim import GrowingNeighborList
+
     checkpoint = model if Path(model).is_file() else download_mace_mp_checkpoint(model)
-    return MaceModel(model=checkpoint, device=torch.device(device), dtype=getattr(torch, dtype), enable_cueq=cueq)
+    return MaceModel(
+        model=checkpoint,
+        device=torch.device(device),
+        dtype=getattr(torch, dtype),
+        enable_cueq=cueq,
+        neighbor_list_fn=GrowingNeighborList() if device == "cuda" else None,
+    )
