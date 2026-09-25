@@ -99,9 +99,6 @@ ci = [
     "phono3py>=4.2.0",
 ]
 
-[project.scripts]
-matcalc = "matcalc._cli:main"
-
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["matcalc", "matcalc.*"]
@@ -109,7 +106,6 @@ include = ["matcalc", "matcalc.*"]
 [tool.setuptools.package-data]
 "matcalc" = [
     "elemental_refs/*.json.gz",
-    "lammps_templates/*.template",
     "py.typed",
 ]
 
