@@ -1,0 +1,157 @@
+"""Phonon benchmark: heat capacity C_V at 300 K of binary compounds vs DFT (Alexandria, PBE).
+
+Recipe (settings as in upstream matcalc):
+
+1. Relax atoms and cell (FIRE, fmax = 0.05 eV/Å, at most 5000 steps). As upstream, the relaxed
+   structure is used even if the relaxation did not converge (``status`` says so).
+2. Build a phonopy supercell at least 20 Å long along each lattice vector and displace each
+   symmetry-distinct atom by 0.015 Å.
+3. Forces on every displaced supercell (single points).
+4. Force constants → phonon frequencies on a q-point mesh → C_V(T) in the harmonic approximation.
+   C_V at 300 K is compared, in J/(K·mol) per mole of primitive cells.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from matcalc.properties.phonon import displaced_supercells, make_phonopy, thermal_properties
+
+from ._common import OK, Benchmark, Material, failed
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from pathlib import Path
+
+    from ase import Atoms
+    from phonopy import Phonopy
+
+    from matcalc.simulation import RelaxResult, Simulator, SinglePointResult
+
+QUANTITIES = ("CV", "min_frequency")
+
+
+class PhononBenchmark(Benchmark):
+    """Heat capacity ``CV`` (J/(K·mol)) at ``temperature`` of binary compounds.
+
+    The table also has ``min_frequency`` (THz): the lowest phonon frequency on the mesh, negative
+    when the relaxed structure has imaginary modes (dynamically unstable with this potential).
+
+    Attributes:
+        fmax: Force threshold of the relaxation (eV/Å).
+        max_steps: Maximum number of FIRE steps.
+        displacement: Finite displacement of phonopy (Å).
+        min_supercell_length: Minimum supercell length along each lattice vector (Å).
+        symprec: Symmetry tolerance of phonopy/spglib (Å).
+        temperature: Temperature at which C_V is compared (K).
+    """
+
+    name = "phonon"
+    id_column = "mp_id"
+    default_dataset = "alexandria-binary-pbe-phonon-2025.1.json.gz"
+    reference_columns = ("CV",)
+    summary_metrics: ClassVar[dict[str, str]] = {"CV": "error"}
+    default_chunk_size = 20
+
+    def __init__(
+        self,
+        dataset: str | Path | None = None,
+        *,
+        n_samples: int | None = None,
+        seed: int = 42,
+        fmax: float = 0.05,
+        max_steps: int = 5000,
+        displacement: float = 0.015,
+        min_supercell_length: float = 20.0,
+        symprec: float = 1e-5,
+        temperature: float = 300.0,
+    ) -> None:
+        """
+        Args:
+            dataset: Dataset file name on Hugging Face, or a local ``Path``.
+            n_samples: Draw this many compounds at random (``None`` = all).
+            seed: Seed of the random draw.
+            fmax: Force threshold of the relaxation (eV/Å).
+            max_steps: Maximum number of FIRE steps.
+            displacement: Finite displacement of phonopy (Å).
+            min_supercell_length: Minimum supercell length along each lattice vector (Å).
+            symprec: Symmetry tolerance of phonopy/spglib (Å).
+            temperature: Temperature at which C_V is compared (K); must be a multiple of 10 K.
+        """
+        super().__init__(dataset, n_samples=n_samples, seed=seed)
+        self.fmax = fmax
+        self.max_steps = max_steps
+        self.displacement = displacement
+        self.min_supercell_length = min_supercell_length
+        self.symprec = symprec
+        self.temperature = temperature
+
+    def read_entries(self, raw: Any) -> list[Material]:
+        """Read the Alexandria entries.
+
+        Args:
+            raw: List of entries with ``mp_id``, ``formula``, ``structure`` (primitive cell) and
+                ``heat_capacity`` (J/(K·mol) at 300 K).
+
+        Returns:
+            One ``Material`` per compound.
+        """
+        return [
+            Material(entry["mp_id"], entry["formula"], entry["structure"], {"CV": entry["heat_capacity"]})
+            for entry in raw
+        ]
+
+    def evaluate(self, materials: Sequence[Material], simulator: Simulator) -> list[dict[str, Any]]:
+        """Steps 1-4 for some compounds.
+
+        Args:
+            materials: Compounds to evaluate.
+            simulator: The simulator of this run.
+
+        Returns:
+            Per compound: ``CV`` (J/(K·mol)), ``min_frequency`` (THz), ``status`` and ``relax_steps``.
+        """
+        with self.stage("relax"):
+            relaxed = simulator.relax([m.structure for m in materials], fmax=self.fmax, max_steps=self.max_steps)
+
+        with self.stage("displacements"):
+            phonons: list[Phonopy | None] = []
+            supercells: list[list[Atoms]] = []
+            for result in relaxed:
+                if result.structure is None:
+                    phonons.append(None)
+                    supercells.append([])
+                    continue
+                phonon = make_phonopy(
+                    result.structure, min_supercell_length=self.min_supercell_length, symprec=self.symprec
+                )
+                phonons.append(phonon)
+                supercells.append(displaced_supercells(phonon, displacement=self.displacement))
+
+        # The forces of all displaced supercells of all compounds are computed in one call.
+        with self.stage("single points"):
+            forces = iter(
+                simulator.single_point([cell for cells in supercells for cell in cells], compute_stress=False)
+            )
+
+        predictions = []
+        with self.stage("phonopy"):
+            for result, phonon, cells in zip(relaxed, phonons, supercells, strict=True):
+                own = [next(forces) for _ in cells]
+                predictions.append(self._heat_capacity(result, phonon, own) | {"relax_steps": result.n_steps})
+        return predictions
+
+    def _heat_capacity(
+        self, relaxed: RelaxResult, phonon: Phonopy | None, forces: Sequence[SinglePointResult]
+    ) -> dict[str, Any]:
+        if phonon is None:
+            return failed(relaxed.error or "relaxation failed", QUANTITIES)
+        errors = [r.error for r in forces if r.error is not None]
+        if errors:
+            return failed(f"single point failed: {errors[0]}", QUANTITIES)
+        thermal = thermal_properties(phonon, [r.forces for r in forces])
+        return {
+            "CV": thermal.heat_capacity_at(self.temperature),
+            "min_frequency": thermal.min_frequency,
+            "status": OK if relaxed.converged else f"{OK} (relaxation not converged)",
+        }

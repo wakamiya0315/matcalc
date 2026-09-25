@@ -1,27 +1,26 @@
-"""Sets some configuration global variables and locations for matcalc."""
+"""Where the benchmark data comes from and where it is cached."""
 
 from __future__ import annotations
 
 import logging
 import os
-import pathlib
 import shutil
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 BENCHMARK_HF_REPO_ID: str = "materialyze/matcalc-bench"
-BENCHMARK_DATA_DIR: pathlib.Path = pathlib.Path.home() / ".cache" / "matcalc"
-SIMULATION_BACKEND: str = os.environ.get("MATCALC_BACKEND", "ASE").upper()
+"""Hugging Face dataset repository that hosts the benchmark files."""
+
+BENCHMARK_DATA_DIR: Path = Path(os.environ.get("MATCALC_CACHE_DIR", Path.home() / ".cache" / "matcalc"))
+"""Local cache of downloaded benchmark files. Override it with the ``MATCALC_CACHE_DIR`` environment variable."""
 
 
 def clear_cache(*, confirm: bool = True) -> None:
-    """
-    Deletes all files and subdirectories within the benchmark data directory,
-    effectively clearing the cache. The user is prompted for confirmation
-    before proceeding with the deletion to prevent accidental data loss.
+    """Delete every downloaded benchmark file in ``BENCHMARK_DATA_DIR``.
 
     Args:
-        confirm: If True (default), prompt before deleting. If False, delete without prompting.
+        confirm: Ask on the terminal before deleting.
     """
     answer = "" if confirm else "y"
     while answer not in ("y", "n"):
