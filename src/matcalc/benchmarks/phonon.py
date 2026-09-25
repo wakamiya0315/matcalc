@@ -13,20 +13,23 @@ Recipe (settings as in upstream matcalc):
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from matcalc.properties.phonon import displaced_supercells, make_phonopy, thermal_properties
+from matcalc.properties.phonon import ThermalProperties, displaced_supercells, make_phonopy, thermal_properties
 
-from ._common import OK, Benchmark, Material, failed
+from ._common import OK, Benchmark, Material, failed, parallel_map
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    import numpy as np
     from ase import Atoms
     from phonopy import Phonopy
+    from pymatgen.core import Structure
 
-    from matcalc.simulation import RelaxResult, Simulator, SinglePointResult
+    from matcalc.simulation import Simulator
 
 QUANTITIES = ("CV", "min_frequency")
 
@@ -66,6 +69,7 @@ class PhononBenchmark(Benchmark):
         min_supercell_length: float = 20.0,
         symprec: float = 1e-5,
         temperature: float = 300.0,
+        workers: int = 1,
     ) -> None:
         """
         Args:
@@ -78,8 +82,9 @@ class PhononBenchmark(Benchmark):
             min_supercell_length: Minimum supercell length along each lattice vector (Å).
             symprec: Symmetry tolerance of phonopy/spglib (Å).
             temperature: Temperature at which C_V is compared (K); must be a multiple of 10 K.
+            workers: Processes for the phonopy step (see ``Benchmark``).
         """
-        super().__init__(dataset, n_samples=n_samples, seed=seed)
+        super().__init__(dataset, n_samples=n_samples, seed=seed, workers=workers)
         self.fmax = fmax
         self.max_steps = max_steps
         self.displacement = displacement
@@ -135,24 +140,69 @@ class PhononBenchmark(Benchmark):
                 simulator.single_point([cell for cells in supercells for cell in cells], compute_stress=False)
             )
 
-        predictions = []
-        with self.stage("phonopy"):
-            for result, phonon, cells in zip(relaxed, phonons, supercells, strict=True):
-                own = [next(forces) for _ in cells]
-                predictions.append(self._heat_capacity(result, phonon, own) | {"relax_steps": result.n_steps})
-        return predictions
+        predictions: list[dict[str, Any]] = []
+        jobs: list[tuple[int, PhononJob]] = []
+        for result, phonon, cells in zip(relaxed, phonons, supercells, strict=True):
+            own = [next(forces) for _ in cells]
+            errors = [r.error for r in own if r.error is not None]
+            if phonon is None:
+                predictions.append(failed(result.error or "relaxation failed", QUANTITIES))
+            elif errors:
+                predictions.append(failed(f"single point failed: {errors[0]}", QUANTITIES))
+            else:
+                predictions.append({})
+                job = PhononJob(
+                    result.structure,
+                    [r.forces for r in own],
+                    self.min_supercell_length,
+                    self.symprec,
+                    self.displacement,
+                )
+                jobs.append((len(predictions) - 1, job))
 
-    def _heat_capacity(
-        self, relaxed: RelaxResult, phonon: Phonopy | None, forces: Sequence[SinglePointResult]
-    ) -> dict[str, Any]:
-        if phonon is None:
-            return failed(relaxed.error or "relaxation failed", QUANTITIES)
-        errors = [r.error for r in forces if r.error is not None]
-        if errors:
-            return failed(f"single point failed: {errors[0]}", QUANTITIES)
-        thermal = thermal_properties(phonon, [r.forces for r in forces])
-        return {
-            "CV": thermal.heat_capacity_at(self.temperature),
-            "min_frequency": thermal.min_frequency,
-            "status": OK if relaxed.converged else f"{OK} (relaxation not converged)",
-        }
+        # Force constants and thermal properties need only the CPU; they run in parallel processes.
+        with self.stage("phonopy"):
+            thermals = parallel_map(thermal_properties_of, [job for _, job in jobs], workers=self.workers)
+        for (i, _), thermal in zip(jobs, thermals, strict=True):
+            predictions[i] = {
+                "CV": thermal.heat_capacity_at(self.temperature),
+                "min_frequency": thermal.min_frequency,
+                "status": OK if relaxed[i].converged else f"{OK} (relaxation not converged)",
+            }
+        return [
+            prediction | {"relax_steps": result.n_steps}
+            for prediction, result in zip(predictions, relaxed, strict=True)
+        ]
+
+
+@dataclass
+class PhononJob:
+    """Everything needed to rebuild phonopy for one compound in another process.
+
+    Attributes:
+        structure: Relaxed primitive cell.
+        forces: Forces on every displaced supercell (eV/Å), in phonopy's order.
+        min_supercell_length: Minimum supercell length (Å).
+        symprec: Symmetry tolerance (Å).
+        displacement: Finite displacement (Å).
+    """
+
+    structure: Structure
+    forces: list[np.ndarray]
+    min_supercell_length: float
+    symprec: float
+    displacement: float
+
+
+def thermal_properties_of(job: PhononJob) -> ThermalProperties:
+    """Rebuild phonopy (the displacements are deterministic) and compute the thermal properties.
+
+    Args:
+        job: Relaxed cell, forces and phonopy settings of one compound.
+
+    Returns:
+        Its harmonic thermal properties.
+    """
+    phonon = make_phonopy(job.structure, min_supercell_length=job.min_supercell_length, symprec=job.symprec)
+    phonon.generate_displacements(distance=job.displacement)
+    return thermal_properties(phonon, job.forces)

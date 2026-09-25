@@ -52,3 +52,18 @@ def fingerprint_distance(fingerprint_a: np.ndarray, fingerprint_b: np.ndarray) -
         The distance ``d`` (dimensionless).
     """
     return float(np.linalg.norm(fingerprint_a - fingerprint_b))
+
+
+def structure_fingerprint_or_error(structure: Structure) -> np.ndarray | str:
+    """``structure_fingerprint``, or the error message if it cannot be computed (for batch use).
+
+    Args:
+        structure: The structure.
+
+    Returns:
+        The fingerprint vector, or ``"<ErrorType>: <message>"``.
+    """
+    try:
+        return structure_fingerprint(structure)
+    except Exception as exc:  # noqa: BLE001 - one odd structure must not stop the others
+        return f"{type(exc).__name__}: {exc}"

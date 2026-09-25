@@ -110,3 +110,15 @@ def test_run_benchmarks_merges_models_on_the_material_id(
     assert {"softening_scale_a", "softening_scale_b", "status_a", "status_b"} <= set(merged.columns)
     assert len(merged) == 1
     assert (tmp_path / "softening_a.json.gz").exists()
+
+
+def test_parallel_post_processing_gives_the_same_numbers(
+    phonon_dataset: Path, equilibrium_dataset: Path, emt_simulator: ASESimulator
+) -> None:
+    serial = PhononBenchmark(phonon_dataset, min_supercell_length=8.0).run(emt_simulator, "emt")
+    parallel = PhononBenchmark(phonon_dataset, min_supercell_length=8.0, workers=2).run(emt_simulator, "emt")
+    assert parallel.equals(serial)
+    pytest.importorskip("matminer")
+    serial = EquilibriumBenchmark(equilibrium_dataset).run(emt_simulator, "emt")
+    parallel = EquilibriumBenchmark(equilibrium_dataset, workers=2).run(emt_simulator, "emt")
+    assert np.array_equal(parallel["d_emt"], serial["d_emt"])

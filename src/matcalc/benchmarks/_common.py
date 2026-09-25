@@ -13,7 +13,9 @@ and returns a table with the DFT reference values next to the predictions.
 from __future__ import annotations
 
 import logging
+import multiprocessing
 import time
+from concurrent.futures import ProcessPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,7 +28,7 @@ from matcalc.datasets import load_benchmark_data, sample_subset
 from matcalc.simulation import as_simulator
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
     from pymatgen.core import Structure
 
@@ -62,6 +64,7 @@ class Benchmark:
         dataset: Dataset file name on Hugging Face, or a local ``Path``.
         n_samples: Number of materials drawn at random (``None`` = all).
         seed: Seed of the random draw (and of the Equilibrium perturbation).
+        workers: Processes for the CPU-heavy post-processing.
         materials: The materials of this run, in the order they were drawn.
         timings: Wall time spent in each stage so far (s).
     """
@@ -81,7 +84,14 @@ class Benchmark:
     batched_chunk_size: ClassVar[int] = 1_000_000
     """Materials per chunk for batched simulators (TorchSim): large, so the GPU stays full."""
 
-    def __init__(self, dataset: str | Path | None = None, *, n_samples: int | None = None, seed: int = 42) -> None:
+    def __init__(
+        self,
+        dataset: str | Path | None = None,
+        *,
+        n_samples: int | None = None,
+        seed: int = 42,
+        workers: int = 1,
+    ) -> None:
         """
         Args:
             dataset: Dataset file name on Hugging Face, or a local ``Path``; default:
@@ -89,10 +99,14 @@ class Benchmark:
             n_samples: Draw this many materials at random (``None`` = all). The draw is the same as
                 upstream matcalc's for the same seed.
             seed: Seed of the random draw.
+            workers: Processes for the CPU-heavy post-processing (phonopy, structural fingerprints).
+                With more than one, a script that runs a benchmark must be guarded by
+                ``if __name__ == "__main__":`` (the workers are started with "spawn").
         """
         self.dataset = dataset or self.default_dataset
         self.n_samples = n_samples
         self.seed = seed
+        self.workers = workers
         self.materials = sample_subset(self.read_entries(load_benchmark_data(self.dataset)), n_samples, seed)
         self.timings: dict[str, float] = {}
 
@@ -223,6 +237,28 @@ class Benchmark:
     def _table(self, rows: list[dict[str, Any]]) -> pd.DataFrame:
         by_id = {row[self.id_column]: row for row in rows}
         return pd.DataFrame([by_id[m.material_id] for m in self.materials if m.material_id in by_id])
+
+
+def parallel_map[T, R](function: Callable[[T], R], items: Sequence[T], *, workers: int) -> list[R]:
+    """``[function(item) for item in items]``, computed in ``workers`` processes when that is more than one.
+
+    Used for CPU-heavy post-processing while the GPU has nothing to do. The processes are started with
+    "spawn" (fork is not safe after CUDA and OpenMP have started threads), so ``function`` must be
+    importable, i.e. defined at module level.
+
+    Args:
+        function: Function applied to every item.
+        items: The items.
+        workers: Number of processes; 1 computes everything in this process.
+
+    Returns:
+        The results, in the order of ``items``.
+    """
+    if workers <= 1 or len(items) <= 1:
+        return [function(item) for item in items]
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=min(workers, len(items)), mp_context=context) as pool:
+        return list(pool.map(function, items))
 
 
 def failed(reason: str, quantities: Sequence[str]) -> dict[str, Any]:

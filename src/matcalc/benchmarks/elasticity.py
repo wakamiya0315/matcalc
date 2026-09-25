@@ -62,6 +62,7 @@ class ElasticityBenchmark(Benchmark):
         max_steps: int = 500,
         normal_strains: Sequence[float] = NORMAL_STRAINS,
         shear_strains: Sequence[float] = SHEAR_STRAINS,
+        workers: int = 1,
     ) -> None:
         """
         Args:
@@ -72,8 +73,9 @@ class ElasticityBenchmark(Benchmark):
             max_steps: Maximum number of FIRE steps.
             normal_strains: Strains along xx, yy, zz.
             shear_strains: Strains along yz, xz, xy.
+            workers: Accepted for a uniform interface; the fits are too cheap to parallelize.
         """
-        super().__init__(dataset, n_samples=n_samples, seed=seed)
+        super().__init__(dataset, n_samples=n_samples, seed=seed, workers=workers)
         self.fmax = fmax
         self.max_steps = max_steps
         self.normal_strains = tuple(normal_strains)

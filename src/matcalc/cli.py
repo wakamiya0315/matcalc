@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import platform
 import sys
 import time
@@ -50,6 +51,12 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--n-samples", type=int, default=None, help="random subset size (default: all)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--chunk-size", type=int, default=None, help="materials per checkpoint")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=min(8, len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count() or 1),
+        help="processes for phonopy and fingerprints (default: available CPU cores, at most 8)",
+    )
     parser.add_argument("--out", type=Path, default=Path("results"), help="output directory")
     return parser.parse_args(argv)
 
@@ -93,7 +100,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "benchmarks": {},
     }
     for name in args.benchmark:
-        benchmark = BENCHMARKS[name](n_samples=args.n_samples, seed=args.seed)
+        benchmark = BENCHMARKS[name](n_samples=args.n_samples, seed=args.seed, workers=args.workers)
         start = time.perf_counter()
         table = benchmark.run(
             simulator, label, checkpoint_file=args.out / f"{name}_{label}.json.gz", chunk_size=args.chunk_size

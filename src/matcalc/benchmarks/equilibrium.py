@@ -16,9 +16,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from matcalc.properties.energetics import elemental_reference_structures, formation_energy_per_atom
-from matcalc.properties.similarity import fingerprint_distance, structure_fingerprint
+from matcalc.properties.similarity import fingerprint_distance, structure_fingerprint_or_error
 
-from ._common import OK, Benchmark, Material, failed
+from ._common import OK, Benchmark, Material, failed, parallel_map
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -58,6 +58,7 @@ class EquilibriumBenchmark(Benchmark):
         fmax: float = 0.05,
         max_steps: int = 500,
         perturb_distance: float | None = 0.1,
+        workers: int = 1,
     ) -> None:
         """
         Args:
@@ -69,13 +70,14 @@ class EquilibriumBenchmark(Benchmark):
             fmax: Force threshold of the relaxations (eV/Å).
             max_steps: Maximum number of FIRE steps per relaxation.
             perturb_distance: Largest distance an atom is moved before relaxing (Å); 0 or None to skip.
+            workers: Processes for the structural fingerprints (see ``Benchmark``).
         """
-        super().__init__(dataset, n_samples=n_samples, seed=seed)
+        super().__init__(dataset, n_samples=n_samples, seed=seed, workers=workers)
         self.fmax = fmax
         self.max_steps = max_steps
         self.perturb_distance = perturb_distance
         self.reference_energies: dict[str, float] = {}
-        self._dft_fingerprints: dict[str, np.ndarray] = {}
+        self._dft_fingerprints: dict[str, np.ndarray | str] = {}
 
     def read_entries(self, raw: Any) -> list[Material]:
         """Read the WBM entries.
@@ -136,8 +138,25 @@ class EquilibriumBenchmark(Benchmark):
         with self.stage("relax"):
             starts = [self._displaced(material.structure) for material in materials]
             relaxed = simulator.relax(starts, fmax=self.fmax, max_steps=self.max_steps)
-        with self.stage("formation energies and fingerprints"):
-            return [self._predict(material, result) for material, result in zip(materials, relaxed, strict=True)]
+        predictions = [self._predict(result) for result in relaxed]
+
+        # Fingerprints need only the CPU; they are computed in parallel processes. The DFT structure's
+        # fingerprint does not depend on the model and is computed once per benchmark.
+        with self.stage("fingerprints"):
+            done = [i for i, prediction in enumerate(predictions) if prediction["status"] == OK]
+            new_dft = sorted({materials[i].material_id for i in done} - set(self._dft_fingerprints))
+            by_id = {m.material_id: m for m in materials}
+            todo = [predictions[i]["structure"] for i in done] + [by_id[m].reference["structure"] for m in new_dft]
+            fingerprints = parallel_map(structure_fingerprint_or_error, todo, workers=self.workers)
+            self._dft_fingerprints.update(zip(new_dft, fingerprints[len(done) :], strict=True))
+            for i, relaxed_fingerprint in zip(done, fingerprints[: len(done)], strict=True):
+                dft_fingerprint = self._dft_fingerprints[materials[i].material_id]
+                for fingerprint in (relaxed_fingerprint, dft_fingerprint):
+                    if isinstance(fingerprint, str):  # the error message
+                        predictions[i]["status"] = f"fingerprint failed: {fingerprint}"
+                if predictions[i]["status"] == OK:
+                    predictions[i]["d"] = fingerprint_distance(relaxed_fingerprint, dft_fingerprint)
+        return predictions
 
     def _displaced(self, structure: Structure) -> Structure:
         if not self.perturb_distance:
@@ -148,7 +167,7 @@ class EquilibriumBenchmark(Benchmark):
         # benchmark does not change if that default changes.
         return structure.copy().perturb(distance=self.perturb_distance, min_distance=0.0, seed=self.seed)
 
-    def _predict(self, material: Material, result: RelaxResult) -> dict[str, Any]:
+    def _predict(self, result: RelaxResult) -> dict[str, Any]:
         steps = {"relax_steps": result.n_steps}
         if result.structure is None:
             return failed(result.error or "relaxation failed", QUANTITIES) | steps
@@ -159,22 +178,9 @@ class EquilibriumBenchmark(Benchmark):
         missing = sorted(el.symbol for el in composition.elements if el.symbol not in self.reference_energies)
         if missing:
             return failed(f"no elemental reference energy for {', '.join(missing)}", QUANTITIES) | steps
-        prediction: dict[str, Any] = {
+        return {
             "structure": result.structure,
             "Eform": formation_energy_per_atom(result.energy, composition, self.reference_energies),
-            "d": float("nan"),
+            "d": float("nan"),  # filled in by evaluate() once the fingerprints are known
             "status": OK,
-        }
-        try:
-            prediction["d"] = fingerprint_distance(
-                structure_fingerprint(result.structure), self._dft_fingerprint(material)
-            )
-        except Exception as exc:  # noqa: BLE001 - keep Eform even if the fingerprint cannot be computed
-            prediction["status"] = f"fingerprint failed: {type(exc).__name__}: {exc}"
-        return prediction | steps
-
-    def _dft_fingerprint(self, material: Material) -> np.ndarray:
-        # The DFT structure does not depend on the model, so its fingerprint is computed only once.
-        if material.material_id not in self._dft_fingerprints:
-            self._dft_fingerprints[material.material_id] = structure_fingerprint(material.reference["structure"])
-        return self._dft_fingerprints[material.material_id]
+        } | steps

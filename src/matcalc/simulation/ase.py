@@ -94,6 +94,8 @@ class ASESimulator:
             logger.warning("Relaxation failed: %s: %s", type(exc).__name__, exc)
             return RelaxResult.failed(f"{type(exc).__name__}: {exc}")
         max_force = float(np.linalg.norm(forces, axis=1).max())
+        # pymatgen would keep a reference to the calculator on the structure; detach it first.
+        atoms.calc = None
         return RelaxResult(
             structure=to_pmg_structure(atoms),
             energy=energy,
