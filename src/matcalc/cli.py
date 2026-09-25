@@ -48,6 +48,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--max-memory-scaler", type=float, default=None, help="TorchSim batch capacity (default: measured on the GPU)"
     )
+    parser.add_argument("--cueq", action="store_true", help="use cuEquivariance kernels for MACE's tensor products")
     parser.add_argument("--n-samples", type=int, default=None, help="random subset size (default: all)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--chunk-size", type=int, default=None, help="materials per checkpoint")
@@ -83,7 +84,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     label = args.label or Path(args.model).stem
     args.out.mkdir(parents=True, exist_ok=True)
-    model = load_mace(args.model, backend=args.backend, device=args.device, dtype=args.dtype)
+    model = load_mace(args.model, backend=args.backend, device=args.device, dtype=args.dtype, cueq=args.cueq)
     if args.backend == "torchsim":
         from .simulation.torchsim import TorchSimSimulator
 
@@ -95,6 +96,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "model": args.model,
         "label": label,
         "dtype": args.dtype,
+        "cueq": args.cueq,
         "simulator": args.backend,
         "n_samples": args.n_samples,
         "seed": args.seed,

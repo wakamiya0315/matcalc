@@ -26,6 +26,7 @@ def load_mace(
     backend: Literal["ase", "torchsim"] = "ase",
     device: str | None = None,
     dtype: Literal["float64", "float32"] = "float64",
+    cueq: bool = False,
 ) -> Any:
     """Load a MACE foundation model.
 
@@ -38,6 +39,8 @@ def load_mace(
         device: ``"cuda"`` or ``"cpu"``; default: CUDA when available.
         dtype: Floating-point precision of the model. float64 is the default because finite
             displacements (phonons) and small strains (elasticity) need it.
+        cueq: Use NVIDIA cuEquivariance kernels for the tensor products (needs the
+            ``cuequivariance-torch`` and ``cuequivariance-ops-torch-cu12`` packages and a CUDA GPU).
 
     Returns:
         The MACE ASE calculator, or the MACE TorchSim model.
@@ -49,9 +52,9 @@ def load_mace(
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     model = MACE_MODELS.get(name, name)
     if backend == "ase":
-        return mace_mp(model=model, device=device, default_dtype=dtype)
+        return mace_mp(model=model, device=device, default_dtype=dtype, enable_cueq=cueq)
 
     from torch_sim.models.mace import MaceModel
 
     checkpoint = model if Path(model).is_file() else download_mace_mp_checkpoint(model)
-    return MaceModel(model=checkpoint, device=torch.device(device), dtype=getattr(torch, dtype))
+    return MaceModel(model=checkpoint, device=torch.device(device), dtype=getattr(torch, dtype), enable_cueq=cueq)
