@@ -1,0 +1,112 @@
+"""The four benchmark pipelines on tiny EMT datasets (offline, CPU)."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import numpy as np
+import pytest
+from monty.serialization import dumpfn
+
+from matcalc import (
+    ElasticityBenchmark,
+    EquilibriumBenchmark,
+    PhononBenchmark,
+    SofteningBenchmark,
+    run_benchmarks,
+)
+
+from .helpers import SOFTENING_FACTOR, structure
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from matcalc import ASESimulator
+
+R_GAS = 8.314462618  # J/(K mol)
+
+
+def test_elasticity(elasticity_dataset: Path, emt_simulator: ASESimulator) -> None:
+    benchmark = ElasticityBenchmark(elasticity_dataset)
+    table = benchmark.run(emt_simulator, "emt")
+    assert list(table.columns[:6]) == ["mp_id", "formula", "K_vrh_DFT", "G_vrh_DFT", "K_vrh_emt", "G_vrh_emt"]
+    assert list(table["status_emt"]) == ["ok", "ok"]
+    assert (table["K_vrh_emt"] > 50).all()
+    assert (table["G_vrh_emt"] > 0).all()
+    assert (table["relax_steps_emt"] > 0).all()
+    summary = benchmark.summarize(table, "emt")
+    assert summary["n_ok"] == 2
+    assert set(summary["K_vrh"]) == {"MAE", "STDAE", "n"}
+    assert {"relax", "single points", "fit"} <= set(summary["timings_s"])
+
+
+def test_elasticity_marks_unconverged_relaxations(emt_simulator: ASESimulator, tmp_path: Path) -> None:
+    # As upstream, convergence is judged on the atomic forces only; they vanish by symmetry in perfect
+    # crystals, so the atoms are displaced here to leave forces after a single FIRE step.
+    rattled = structure("Cu").copy().perturb(0.05, seed=3)
+    path = tmp_path / "rattled.json.gz"
+    dumpfn(
+        [{"mp_id": "t-Cu", "formula": "Cu", "structure": rattled, "bulk_modulus_vrh": 1, "shear_modulus_vrh": 1}], path
+    )
+    table = ElasticityBenchmark(path, max_steps=1).run(emt_simulator, "emt")
+    assert table.loc[0, "status_emt"].startswith("relaxation not converged")
+    assert np.isnan(table.loc[0, "K_vrh_emt"])
+    assert table.loc[0, "relax_steps_emt"] == 1
+
+
+def test_checkpoint_resumes(elasticity_dataset: Path, emt_simulator: ASESimulator, tmp_path: Path) -> None:
+    checkpoint = tmp_path / "elasticity_emt.json.gz"
+    first = ElasticityBenchmark(elasticity_dataset).run(emt_simulator, "emt", checkpoint_file=checkpoint, chunk_size=1)
+    assert checkpoint.exists()
+
+    class Exploding:
+        def relax(self, *args: object, **kwargs: object) -> None:
+            raise AssertionError("finished materials must not be recomputed")
+
+        single_point = relax
+
+    second = ElasticityBenchmark(elasticity_dataset).run(Exploding(), "emt", checkpoint_file=checkpoint)
+    assert second.equals(first)
+    with pytest.raises(ValueError, match="belongs to another run"):
+        ElasticityBenchmark(elasticity_dataset).run(emt_simulator, "other-model", checkpoint_file=checkpoint)
+
+
+def test_phonon(phonon_dataset: Path, emt_simulator: ASESimulator) -> None:
+    table = PhononBenchmark(phonon_dataset, min_supercell_length=8.0).run(emt_simulator, "emt")
+    assert table.loc[0, "status_emt"] == "ok"
+    heat_capacity = table.loc[0, "CV_emt"]
+    assert 0.8 * 3 * R_GAS < heat_capacity < 3 * R_GAS  # one atom per cell: just below Dulong-Petit
+    assert table.loc[0, "min_frequency_emt"] > -0.1  # fcc Cu is stable
+
+
+def test_softening(softening_dataset: Path, emt_simulator: ASESimulator) -> None:
+    table = SofteningBenchmark(softening_dataset).run(emt_simulator, "emt")
+    assert list(table.columns) == ["material_id", "formula", "softening_scale_emt", "status_emt"]
+    assert table.loc[0, "formula"] == "Cu"
+    assert table.loc[0, "softening_scale_emt"] == pytest.approx(1 / SOFTENING_FACTOR, rel=1e-10)
+
+
+def test_equilibrium(equilibrium_dataset: Path, emt_simulator: ASESimulator) -> None:
+    pytest.importorskip("matminer")
+    benchmark = EquilibriumBenchmark(equilibrium_dataset)
+    table = benchmark.run(emt_simulator, "emt")
+    assert set(benchmark.reference_energies) == {"Cu", "Au"}
+    assert list(table["status_emt"]) == ["ok", "ok"]
+    assert np.isfinite(table["Eform_emt"]).all()
+    assert (table["d_emt"] >= 0).all()
+    assert table.loc[0, "structure_emt"].composition.reduced_formula == "Cu3Au"
+
+    again = EquilibriumBenchmark(equilibrium_dataset).run(emt_simulator, "emt")  # seeded displacements
+    assert np.array_equal(again["Eform_emt"], table["Eform_emt"])
+
+
+def test_run_benchmarks_merges_models_on_the_material_id(
+    softening_dataset: Path, emt_simulator: ASESimulator, tmp_path: Path
+) -> None:
+    tables = run_benchmarks(
+        [SofteningBenchmark(softening_dataset)], {"a": emt_simulator, "b": emt_simulator}, output_dir=tmp_path
+    )
+    merged = tables["softening"]
+    assert {"softening_scale_a", "softening_scale_b", "status_a", "status_b"} <= set(merged.columns)
+    assert len(merged) == 1
+    assert (tmp_path / "softening_a.json.gz").exists()
