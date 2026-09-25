@@ -74,9 +74,11 @@ class TorchSimSimulator:
     Attributes:
         model: TorchSim model of the MLIP.
         max_memory_scaler: Capacity of one batch in TorchSim's memory metric (sum over the batch of
-            number of atoms x number density). ``None`` = measure it on the GPU on first use.
+            number of atoms x number density). ``None`` = measure it on the GPU for every call, on the
+            smallest and the largest structure of that call.
         memory_padding: Fraction of the measured capacity actually used (TorchSim cannot recover
             from running out of GPU memory in the middle of a run).
+        capacities: Capacity used by every call so far (for diagnostics).
         steps_between_swaps: FIRE steps between convergence checks. 1 stops each relaxation at the
             same step as ASE; larger values do less bookkeeping.
         show_progress: Show progress bars.
@@ -90,7 +92,7 @@ class TorchSimSimulator:
         model: ModelInterface,
         *,
         max_memory_scaler: float | None = None,
-        memory_padding: float = 0.8,
+        memory_padding: float = 0.9,
         steps_between_swaps: int = 1,
         show_progress: bool = True,
     ) -> None:
@@ -98,7 +100,7 @@ class TorchSimSimulator:
         Args:
             model: TorchSim model of the MLIP (its device and dtype are used for everything).
             max_memory_scaler: Capacity of one batch in TorchSim's memory metric; ``None`` = measure it
-                on the GPU on first use (on a CPU everything goes into one batch).
+                on the GPU for every call (on a CPU everything goes into one batch).
             memory_padding: Fraction of the measured capacity actually used.
             steps_between_swaps: FIRE steps between convergence checks.
             show_progress: Show progress bars.
@@ -108,7 +110,7 @@ class TorchSimSimulator:
         self.memory_padding = memory_padding
         self.steps_between_swaps = steps_between_swaps
         self.show_progress = show_progress
-        self._measured_capacity: dict[bool, float] = {}  # with / without stress
+        self.capacities: list[float] = []
 
     def relax(self, structures: Sequence[Structure], *, fmax: float, max_steps: int) -> list[RelaxResult]:
         """Relax atoms and cell of every structure with FIRE on a Frechet cell filter, in batches.
@@ -128,7 +130,7 @@ class TorchSimSimulator:
             batcher = ts.InFlightAutoBatcher(
                 self.model,
                 memory_scales_with=self.model.memory_scales_with,
-                max_memory_scaler=self._capacity(state, with_stress=True),
+                max_memory_scaler=self._capacity(state),
             )
             final = ts.optimize(
                 system=state,
@@ -180,7 +182,7 @@ class TorchSimSimulator:
             batcher = ts.BinningAutoBatcher(
                 self.model,
                 memory_scales_with=self.model.memory_scales_with,
-                max_memory_scaler=self._capacity(state, with_stress=compute_stress),
+                max_memory_scaler=self._capacity(state),
             )
             outputs = ts.static(
                 system=state,
@@ -204,18 +206,26 @@ class TorchSimSimulator:
             dtype=self.model.dtype,
         )
 
-    def _capacity(self, state: Any, *, with_stress: bool) -> float:
-        """Batch capacity in TorchSim's memory metric: given, measured once per mode, or everything."""
+    def _capacity(self, state: Any) -> float:
+        """Batch capacity for the structures of one call, in TorchSim's memory metric.
+
+        Memory per unit of the metric differs between many tiny cells and a few large supercells, so the
+        capacity is measured for each call on its smallest and its largest structure (TorchSim probes
+        with growing copies of each until the GPU runs out of memory and backs off two steps). It is
+        never below the largest structure, which can then always run on its own.
+        """
         if self.max_memory_scaler is not None:
-            return self.max_memory_scaler
-        metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
-        if self.model.device.type != "cuda":
-            return float(sum(metric)) + 1.0  # no GPU memory to measure: one batch
-        if with_stress not in self._measured_capacity:
-            measured = estimate_max_memory_scaler(state, self.model, metric)
-            self._measured_capacity[with_stress] = measured * self.memory_padding
-            logger.info("TorchSim batch capacity (%s stress): %.4g", "with" if with_stress else "without", measured)
-        return self._measured_capacity[with_stress]
+            capacity = self.max_memory_scaler
+        else:
+            metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
+            if self.model.device.type != "cuda":
+                capacity = float(sum(metric)) + 1.0  # no GPU memory to measure: one batch
+            else:
+                measured = estimate_max_memory_scaler(state, self.model, metric) * self.memory_padding
+                capacity = max(measured, *metric)
+        self.capacities.append(capacity)
+        logger.info("TorchSim batch capacity: %.4g (%d structures)", capacity, state.n_systems)
+        return capacity
 
 
 def _per_structure(per_atom: torch.Tensor, state: Any) -> list[np.ndarray]:
