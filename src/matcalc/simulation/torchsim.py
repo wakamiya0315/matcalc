@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import torch
 import torch_sim as ts
+import torch_sim.math as tsm
 from torch_sim.autobatching import calculate_memory_scalers, estimate_max_memory_scaler
 from torch_sim.optimizers import fire_init, fire_step
 
@@ -38,37 +39,56 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-FIRE_F_DEC = 0.5
-"""FIRE's time-step reduction factor (the default of TorchSim and ASE)."""
+FIRE_DEFAULTS = {"n_min": 5, "f_dec": 0.5, "f_alpha": 0.99}
+"""FIRE parameters used below; the defaults of both TorchSim and ASE."""
 
 MAX_OUT_OF_MEMORY_RETRIES = 3
 """How often a batched call is retried with half the batch capacity after running out of GPU memory."""
 
 
 def ase_consistent_fire_step(state: Any, model: ModelInterface, **kwargs: Any) -> Any:
-    """One FIRE step in which structures that just joined a running batch start like in ASE.
+    """One step of TorchSim's ASE-flavoured FIRE, corrected to follow ASE's FIRE exactly.
 
-    TorchSim marks a structure that has not moved yet with NaN velocities. When every structure of a
-    batch is new, the first step skips the FIRE velocity mixing, exactly like ASE's first step. When
-    new structures join a batch that is already running, however, the mixing sees zero power for them
-    and halves their time step, which ASE never does on a first step. Doubling their time step
-    beforehand cancels that halving, so every structure follows the same path as in ASE whatever
-    batch it happens to be in.
+    Two details of TorchSim's step differ from ``ase.optimize.FIRE``; both are undone here, so every
+    structure follows the same path as in ASE whatever batch it happens to be in:
+
+    1. A structure that has not moved yet has NaN velocities. When a whole batch is new, TorchSim skips
+       the velocity mixing like ASE's first step, but a structure that joins a running batch goes
+       through the mixing with zero power, which halves its time step. Its time step is doubled
+       beforehand.
+    2. After more than ``n_min`` downhill steps FIRE shrinks the mixing parameter alpha. ASE mixes the
+       velocities with alpha from *before* shrinking it; TorchSim shrinks it first. For the structures
+       concerned, alpha is enlarged by the same factor before the step and shrunk again afterwards.
 
     Args:
-        state: TorchSim FIRE state of the current batch.
+        state: TorchSim FIRE state (with a cell filter) of the current batch.
         model: TorchSim model.
         **kwargs: FIRE parameters, passed on to ``torch_sim.optimizers.fire_step``.
 
     Returns:
         The state after one FIRE step.
     """
+    n_min = kwargs.get("n_min", FIRE_DEFAULTS["n_min"])
+    f_dec = kwargs.get("f_dec", FIRE_DEFAULTS["f_dec"])
+    f_alpha = kwargs.get("f_alpha", FIRE_DEFAULTS["f_alpha"])
     new_atoms = state.velocities.isnan().any(dim=1)
-    if new_atoms.any() and not new_atoms.all():
+    if new_atoms.all():  # first step of every structure: TorchSim already does what ASE does
+        return fire_step(state, model, **kwargs)
+
+    if new_atoms.any():
         new_structures = torch.zeros(state.n_systems, dtype=torch.bool, device=state.device)
         new_structures[state.system_idx[new_atoms]] = True
-        state.dt[new_structures] = state.dt[new_structures] / kwargs.get("f_dec", FIRE_F_DEC)
-    return fire_step(state, model, **kwargs)
+        state.dt[new_structures] = state.dt[new_structures] / f_dec
+
+    # The power P = F . v that decides the step, computed as TorchSim does inside fire_step.
+    power = tsm.batched_vdot(state.deform_grad_forces(), torch.nan_to_num(state.velocities), state.system_idx) + (
+        state.cell_forces * torch.nan_to_num(state.cell_velocities)
+    ).sum(dim=(1, 2))
+    shrinking = (state.n_pos > n_min) & (power > 0.0)
+    state.alpha[shrinking] = state.alpha[shrinking] / f_alpha
+    state = fire_step(state, model, **kwargs)
+    state.alpha[shrinking] = state.alpha[shrinking] * f_alpha
+    return state
 
 
 def ase_convergence(fmax: float) -> Callable[..., torch.Tensor]:
