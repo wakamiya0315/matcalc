@@ -17,7 +17,6 @@ def main() -> None:
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--dtype", default="float64", choices=["float64", "float32"])
     parser.add_argument("--workers", type=int, default=1)
-    parser.add_argument("--cueq", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -52,7 +51,7 @@ def main() -> None:
         from matcalc.simulation.torchsim import TorchSimSimulator
 
         backend = "torchsim" if args.code == "fork-torchsim" else "ase"
-        model = matcalc.load_mace("MACE-MatPES-PBE-0", backend=backend, dtype=args.dtype, cueq=args.cueq)
+        model = matcalc.load_mace("MACE-MatPES-PBE-0", backend=backend, dtype=args.dtype)
         simulator = (TorchSimSimulator(model, show_progress=False) if backend == "torchsim"
                      else matcalc.ASESimulator(model, show_progress=False))
         bench = matcalc.BENCHMARKS[args.benchmark](n_samples=args.n_samples, seed=args.seed, workers=args.workers)
@@ -64,7 +63,7 @@ def main() -> None:
     end = time.perf_counter()
     table = table[[c for c in table.columns if not c.startswith("structure_")]]
     table.to_csv(args.out, index=False)
-    info = {"code": args.code, "dtype": args.dtype, "workers": args.workers, "cueq": args.cueq,
+    info = {"code": args.code, "dtype": args.dtype, "workers": args.workers,
             "benchmark": args.benchmark, "n": len(table), "setup_s": round(loaded - start, 1),
             "run_s": round(end - loaded, 1), "gpu": torch.cuda.get_device_name(0),
             "peak_gpu_mem_GiB": round(torch.cuda.max_memory_allocated() / 2**30, 2), **extra}

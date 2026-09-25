@@ -15,7 +15,7 @@ SRC=$TSDIR/src; [ "$CODE" = upstream ] && SRC=$GE/matcalc/src
 TAG=${TAG:-$CODE}
 echo "host: $(hostname)  start: $(date)  $CODE $B $TAG  code: $(git -C ${SRC%/src} log --oneline -1)"
 nvidia-smi -L
-PYTHONPATH=$SRC "$VENV/bin/python" run_one.py "$CODE" "$B" --out "out/${B}_${TAG}.csv" --checkpoint "out/${B}_${TAG}.ckpt.json" --workers ${WORKERS:-1} ${CUEQ:+--cueq} \
+PYTHONPATH=$SRC "$VENV/bin/python" run_one.py "$CODE" "$B" --out "out/${B}_${TAG}.csv" --checkpoint "out/${B}_${TAG}.ckpt.json" --workers ${WORKERS:-1} \
   > "log/${B}_${TAG}.out" 2> "log/${B}_${TAG}.err"
 echo "exit=$?  end: $(date)"
 tail -1 "log/${B}_${TAG}.out"
