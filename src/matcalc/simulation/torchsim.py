@@ -24,7 +24,7 @@ import numpy as np
 import torch
 import torch_sim as ts
 import torch_sim.math as tsm
-from torch_sim.autobatching import calculate_memory_scalers, estimate_max_memory_scaler
+from torch_sim.autobatching import calculate_memory_scalers, estimate_max_memory_scaler, to_constant_volume_bins
 from torch_sim.optimizers import fire_init, fire_step
 from tqdm import tqdm
 
@@ -33,7 +33,7 @@ from matcalc.structures import to_ase_atoms, to_pmg_structure
 from .base import RelaxResult, SinglePointResult
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
 
     from ase import Atoms
     from pymatgen.core import Structure
@@ -46,6 +46,9 @@ FIRE_DEFAULTS = {"n_min": 5, "f_dec": 0.5, "f_alpha": 0.99}
 
 MAX_OUT_OF_MEMORY_RETRIES = 3
 """How often a batched call is retried with half the batch capacity after running out of GPU memory."""
+
+OUT_OF_MEMORY_BACKOFF = 0.8
+"""After a batch of single points runs out of GPU memory, the capacity is lowered to this fraction of it."""
 
 
 def ase_consistent_fire_step(state: Any, model: ModelInterface, **kwargs: Any) -> Any:
@@ -347,26 +350,37 @@ class TorchSimSimulator:
             return []
         state = self._state(structures)
         metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
-        results: list[SinglePointResult | None] = [None] * state.n_systems
+        results: list[SinglePointResult] = [SinglePointResult.failed("not evaluated")] * state.n_systems
         with _stress_enabled(self.model, enabled=compute_stress):
-            batcher = ts.BinningAutoBatcher(
-                self.model,
-                memory_scales_with=self.model.memory_scales_with,
-                max_memory_scaler=self._capacity(state, metric),
-            )
-            batcher.load_states(state)
-            bins = tqdm(batcher, total=len(batcher.index_bins), desc="single point", disable=not self.show_progress)
-            for batch, indices in bins:
-                for index, result in zip(indices, self._evaluate(batch, compute_stress=compute_stress), strict=True):
+            capacity = self._capacity(state, metric)
+            batches = _pack(range(state.n_systems), metric, capacity)
+            progress = tqdm(total=state.n_systems, desc="single point", disable=not self.show_progress)
+            while batches:
+                batch = batches.pop(0)
+                evaluated = self._evaluate(state[batch], compute_stress=compute_stress)
+                if evaluated is None and len(batch) > 1:
+                    # Lower the capacity below this batch for the rest of the call, so that running out of
+                    # memory happens a few times per call rather than once per batch.
+                    capacity = OUT_OF_MEMORY_BACKOFF * sum(metric[i] for i in batch)
+                    self.capacities.append(capacity)
+                    logger.warning(
+                        "GPU out of memory on a batch of %d structures; batch capacity lowered to %.4g",
+                        len(batch),
+                        capacity,
+                    )
+                    batches = _pack([i for b in (batch, *batches) for i in b], metric, capacity)
+                    continue
+                if evaluated is None:
+                    logger.warning("A structure with %d atoms does not fit on the GPU", len(structures[batch[0]]))
+                    evaluated = [SinglePointResult.failed("GPU out of memory")]
+                for index, result in zip(batch, evaluated, strict=True):
                     results[index] = result
-        return [result if result is not None else SinglePointResult.failed("not evaluated") for result in results]
+                progress.update(len(batch))
+            progress.close()
+        return results
 
-    def _evaluate(self, batch: Any, *, compute_stress: bool) -> list[SinglePointResult]:
-        """One forward pass over a batch; if the GPU runs out of memory, each half is evaluated separately.
-
-        A structure that does not fit on the GPU even on its own gets a failed result instead of
-        stopping the whole calculation.
-        """
+    def _evaluate(self, batch: Any, *, compute_stress: bool) -> list[SinglePointResult] | None:
+        """One forward pass over a batch; ``None`` if the GPU ran out of memory."""
         try:
             out = self.model(batch)
         except RuntimeError as exc:
@@ -375,16 +389,9 @@ class TorchSimSimulator:
             out = None
         if out is None:
             # Only now, outside the except block, is the failed forward pass (kept alive by the exception's
-            # traceback) released, so its memory can be freed before the halves are tried.
+            # traceback) released, so its memory can be freed before the next attempt.
             _free_gpu_memory()
-            if batch.n_systems == 1:
-                logger.warning("A structure with %d atoms does not fit on the GPU", batch.n_atoms)
-                return [SinglePointResult.failed("GPU out of memory")]
-            half = batch.n_systems // 2
-            logger.warning("GPU out of memory; splitting a batch of %d structures", batch.n_systems)
-            return self._evaluate(batch[list(range(half))], compute_stress=compute_stress) + self._evaluate(
-                batch[list(range(half, batch.n_systems))], compute_stress=compute_stress
-            )
+            return None
         energies = out["energy"].detach().cpu().numpy()
         forces = _per_structure(out["forces"], batch)
         stresses = out["stress"].detach().cpu().numpy() if compute_stress else [None] * batch.n_systems
@@ -409,8 +416,9 @@ class TorchSimSimulator:
         structure; at that size one more attempt is made before giving up.
         """
         metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
+        # TorchSim recomputes the metric structure by structure, which can differ in the last digit.
         largest = max(metric) * (1 + 1e-6)
-        capacity = self._capacity(state, metric)
+        capacity = max(self._capacity(state, metric), largest)  # every structure must fit into a batch
         last_try_at_smallest = False
         for attempt in range(MAX_OUT_OF_MEMORY_RETRIES + 1):
             try:
@@ -432,13 +440,14 @@ class TorchSimSimulator:
         capacity is measured on the smallest and the largest structure of a call (TorchSim probes with
         growing copies of each until the GPU runs out of memory and backs off two steps). A later call
         whose structures lie within the range already measured (with the same stress setting) reuses the
-        capacity; a call with new extremes is measured again. Measured or given, the capacity is never
-        below the largest structure, which can then always run on its own.
+        capacity; a call with new extremes is measured again.
+
+        The capacity can be smaller than the largest structure: when that structure barely fits on the
+        GPU on its own, TorchSim reports room for one copy of it. Single points then evaluate structures
+        larger than the capacity one at a time; relaxations raise the capacity to the largest structure.
         """
-        # TorchSim recomputes the metric structure by structure, which can differ in the last digit.
-        largest = max(metric) * (1 + 1e-6)
         if self.max_memory_scaler is not None:
-            capacity = max(self.max_memory_scaler, largest)
+            capacity = self.max_memory_scaler
         elif self.model.device.type != "cuda":
             capacity = float(sum(metric)) * (1 + 1e-6) + 1.0  # no GPU memory to measure: one batch
         else:
@@ -451,10 +460,18 @@ class TorchSimSimulator:
                 if known is not None:  # the range now covers both calls: keep the smaller capacity
                     low, high, capacity = min(low, known[0]), max(high, known[1]), min(capacity, known[2])
                 self._measured[stress] = (low, high, capacity)
-            capacity = max(capacity, largest)
         self.capacities.append(capacity)
         logger.info("TorchSim batch capacity: %.4g (%d structures)", capacity, state.n_systems)
         return capacity
+
+
+def _pack(indices: Iterable[int], metric: Sequence[float], capacity: float) -> list[list[int]]:
+    """Pack structures into batches whose summed memory metric stays within ``capacity``, largest first.
+
+    A structure larger than the capacity gets a batch of its own.
+    """
+    bins = to_constant_volume_bins({i: float(metric[i]) for i in indices}, max_volume=capacity)
+    return [sorted(batch) for batch in bins]
 
 
 def _free_gpu_memory() -> None:

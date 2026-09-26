@@ -173,11 +173,14 @@ def test_out_of_memory_is_retried_with_half_the_capacity() -> None:
         simulator._batched(state, broken)
 
 
-class _SmallBatchesOnly:
-    """A model that 'runs out of memory' on batches of more than two structures."""
+class _OutOfMemoryModel:
+    """A model that 'runs out of memory' on batches of more than ``max_structures`` structures, or with a
+    structure of more than ``max_atoms`` atoms, and records the size of every batch it sees."""
 
-    def __init__(self, inner: Any) -> None:
+    def __init__(self, inner: Any, *, max_structures: int = 1000, max_atoms: int = 1000) -> None:
         object.__setattr__(self, "inner", inner)
+        object.__setattr__(self, "limits", (max_structures, max_atoms))
+        object.__setattr__(self, "batches", [])
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.inner, name)
@@ -186,17 +189,42 @@ class _SmallBatchesOnly:
         setattr(self.inner, name, value)
 
     def __call__(self, state: Any) -> Any:
-        if state.n_systems > 2:
+        self.batches.append(state.n_systems)
+        max_structures, max_atoms = self.limits
+        if state.n_systems > max_structures or int(torch.bincount(state.system_idx).max()) > max_atoms:
             raise RuntimeError("CUDA out of memory (test)")
         return self.inner(state)
 
 
-def test_single_point_splits_batches_that_do_not_fit() -> None:
+def test_single_point_lowers_the_capacity_after_running_out_of_memory() -> None:
     model = lj_model()
     cells = [*starting_structures(), structure("Cu1")]
     reference = TorchSimSimulator(model, show_progress=False).single_point(cells)
-    split = TorchSimSimulator(_SmallBatchesOnly(model), show_progress=False).single_point(cells)
-    for ref, got in zip(reference, split, strict=True):
+    small = _OutOfMemoryModel(model, max_structures=2)
+    simulator = TorchSimSimulator(small, show_progress=False)
+    results = simulator.single_point(cells)
+    for ref, got in zip(reference, results, strict=True):
         assert got.error is None
         assert got.energy == pytest.approx(ref.energy, abs=1e-12)
         assert_allclose(got.forces, ref.forces, atol=1e-12)
+    assert simulator.capacities == sorted(simulator.capacities, reverse=True)  # only ever lowered
+    assert sum(n > 2 for n in small.batches) <= 3  # a few failed batches, not one per batch
+
+
+def test_single_point_evaluates_structures_larger_than_the_capacity_alone() -> None:
+    model = lj_model()
+    cells = [*starting_structures(), structure("Cu1")]
+    reference = TorchSimSimulator(model, show_progress=False).single_point(cells)
+    recorder = _OutOfMemoryModel(model)
+    results = TorchSimSimulator(recorder, max_memory_scaler=1e-3, show_progress=False).single_point(cells)
+    assert recorder.batches == [1] * len(cells)
+    for ref, got in zip(reference, results, strict=True):
+        assert got.energy == pytest.approx(ref.energy, abs=1e-12)
+
+
+def test_structures_that_do_not_fit_alone_fail_without_stopping_the_others() -> None:
+    cells = [*starting_structures(), structure("Cu1")]  # 4, 4, 2, 4 and 1 atoms
+    results = TorchSimSimulator(_OutOfMemoryModel(lj_model(), max_atoms=2), show_progress=False).single_point(cells)
+    assert [r.error for r in results] == ["GPU out of memory", "GPU out of memory", None, "GPU out of memory", None]
+    assert np.isfinite(results[2].energy)
+    assert np.isfinite(results[4].energy)
