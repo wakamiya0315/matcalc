@@ -28,7 +28,7 @@ from matcalc.datasets import load_benchmark_data, sample_subset
 from matcalc.simulation import as_simulator
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
 
     from pymatgen.core import Structure
 
@@ -262,6 +262,41 @@ def parallel_map[T, R](function: Callable[[T], R], items: Sequence[T], *, worker
     context = multiprocessing.get_context("spawn")
     with ProcessPoolExecutor(max_workers=min(workers, len(items)), mp_context=context) as pool:
         return list(pool.map(function, items))
+
+
+@contextmanager
+def worker_pool(workers: int) -> Iterator[ProcessPoolExecutor | None]:
+    """Worker processes for CPU work that overlaps with the GPU (``None`` for one worker).
+
+    Args:
+        workers: Number of processes; 1 means no pool (everything runs in this process).
+
+    Yields:
+        The pool, or ``None``.
+    """
+    if workers <= 1:
+        yield None
+        return
+    with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as pool:
+        yield pool
+
+
+def pool_map[T, R](pool: ProcessPoolExecutor | None, function: Callable[[T], R], items: Sequence[T]) -> Iterable[R]:
+    """``map(function, items)`` in the pool: the work starts at once, the results are collected when read.
+
+    Without a pool the results are computed here, before returning.
+
+    Args:
+        pool: A pool from ``worker_pool``, or ``None``.
+        function: Function defined at module level (the workers are started with "spawn").
+        items: The items.
+
+    Returns:
+        The results, in the order of ``items``.
+    """
+    if pool is None or len(items) <= 1:
+        return [function(item) for item in items]
+    return pool.map(function, items)
 
 
 def failed(reason: str, quantities: Sequence[str]) -> dict[str, Any]:

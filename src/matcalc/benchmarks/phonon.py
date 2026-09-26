@@ -29,7 +29,7 @@ from pymatgen.core import Structure
 
 from matcalc.properties.phonon import HarmonicProperties, displaced_supercells, harmonic_properties, make_phonopy
 
-from ._common import OK, Benchmark, Material, failed, parallel_map
+from ._common import OK, Benchmark, Material, failed, pool_map, worker_pool
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -40,6 +40,9 @@ if TYPE_CHECKING:
     from matcalc.simulation import Simulator
 
 QUANTITIES = ("CV", "stable", "min_frequency")
+
+PARTS = 8
+"""The displaced supercells are evaluated in this many parts, so that phonopy overlaps with the GPU."""
 
 DATASET = Path(__file__).parent / "data" / "alexandria-pbe-phonon.json.gz"
 """The 1,170 compounds with the settings of their DFT phonon calculations (built by
@@ -151,42 +154,46 @@ class PhononBenchmark(Benchmark):
             else None
             for material, result in zip(materials, relaxed, strict=True)
         ]
-        # Setting up phonopy (symmetry of the supercell) needs only the CPU; it runs in parallel processes.
-        with self.stage("displacements"):
-            generated = iter(
-                parallel_map(displaced_supercells_of, [j for j in jobs if j is not None], workers=self.workers)
-            )
-            supercells: list[list[Atoms]] = [[] if job is None else next(generated) for job in jobs]
-
-        # The forces of all displaced supercells of all compounds are computed in one call.
-        with self.stage("single points"):
-            forces = iter(
-                simulator.single_point([cell for cells in supercells for cell in cells], compute_stress=False)
-            )
-
-        predictions: list[dict[str, Any]] = []
-        todo: list[tuple[int, PhononJob]] = []
-        for result, job, cells in zip(relaxed, jobs, supercells, strict=True):
-            own = [next(forces) for _ in cells]
-            errors = [r.error for r in own if r.error is not None]
-            if job is None:
-                predictions.append(failed(result.error or "relaxation not converged", QUANTITIES))
-            elif errors:
-                predictions.append(failed(f"single point failed: {errors[0]}", QUANTITIES))
-            else:
-                predictions.append({})
-                todo.append((len(predictions) - 1, replace(job, forces=[r.forces for r in own])))
-
-        # Force constants and frequencies need only the CPU; they run in parallel processes.
-        with self.stage("phonopy"):
-            results = parallel_map(harmonic_properties_of, [job for _, job in todo], workers=self.workers)
-        for (i, _), harmonic in zip(todo, results, strict=True):
-            predictions[i] = {
-                "CV": harmonic.heat_capacity,
-                "stable": harmonic.dynamically_stable,
-                "min_frequency": harmonic.min_frequency,
-                "status": OK,
-            }
+        predictions: list[dict[str, Any]] = [
+            {} if job is not None else failed(result.error or "relaxation not converged", QUANTITIES)
+            for job, result in zip(jobs, relaxed, strict=True)
+        ]
+        todo = [i for i, job in enumerate(jobs) if job is not None]
+        with worker_pool(self.workers) as pool:
+            # Setting up phonopy (symmetry of the supercell) needs only the CPU.
+            with self.stage("displacements"):
+                supercells = dict(
+                    zip(todo, pool_map(pool, displaced_supercells_of, [jobs[i] for i in todo]), strict=True)
+                )
+            # The forces are computed part by part; the phonopy step of a part (force constants and
+            # frequencies, CPU only) runs in the worker processes while the GPU computes the next part.
+            pending = []
+            for part in _parts(todo, supercells, PARTS):
+                with self.stage("single points"):
+                    forces = iter(
+                        simulator.single_point([c for i in part for c in supercells[i]], compute_stress=False)
+                    )
+                ready = []
+                for i in part:
+                    own = [next(forces) for _ in supercells[i]]
+                    errors = [r.error for r in own if r.error is not None]
+                    if errors:
+                        predictions[i] = failed(f"single point failed: {errors[0]}", QUANTITIES)
+                    else:
+                        ready.append((i, replace(jobs[i], forces=[r.forces for r in own])))
+                with self.stage("phonopy"):  # only the time the GPU waits for the CPU
+                    pending.append(
+                        ([i for i, _ in ready], pool_map(pool, harmonic_properties_of, [j for _, j in ready]))
+                    )
+            with self.stage("phonopy"):
+                for indices, results in pending:
+                    for i, harmonic in zip(indices, results, strict=True):
+                        predictions[i] = {
+                            "CV": harmonic.heat_capacity,
+                            "stable": harmonic.dynamically_stable,
+                            "min_frequency": harmonic.min_frequency,
+                            "status": OK,
+                        }
         return [
             prediction | {"relax_steps": result.n_steps}
             for prediction, result in zip(predictions, relaxed, strict=True)
@@ -275,3 +282,17 @@ def harmonic_properties_of(job: PhononJob) -> HarmonicProperties:
     phonon = make_phonopy(job.structure, job.supercell_matrix, job.primitive_matrix, symprec=job.symprec)
     displaced_supercells(phonon, job.displacements)
     return harmonic_properties(phonon, job.forces, temperature=job.temperature, mesh=job.mesh)
+
+
+def _parts(indices: list[int], supercells: dict[int, list[Atoms]], n_parts: int) -> list[list[int]]:
+    """Split compounds into consecutive groups with about the same number of supercell atoms."""
+    sizes = [sum(len(cell) for cell in supercells[i]) for i in indices]
+    target = max(1, sum(sizes) / n_parts)
+    parts: list[list[int]] = [[]]
+    total = 0.0
+    for i, size in zip(indices, sizes, strict=True):
+        if total >= target * len(parts) and parts[-1]:
+            parts.append([])
+        parts[-1].append(i)
+        total += size
+    return [part for part in parts if part]

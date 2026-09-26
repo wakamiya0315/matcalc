@@ -1,14 +1,16 @@
 # The four benchmarks
 
-All four compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data from the
-Hugging Face dataset [`materialyze/matcalc-bench`](https://huggingface.co/datasets/materialyze/matcalc-bench).
+All four compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data: the
+Hugging Face dataset [`materialyze/matcalc-bench`](https://huggingface.co/datasets/materialyze/matcalc-bench)
+(Equilibrium, Elasticity, Softening) and the packaged Phonon dataset.
 Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å³; moduli are reported in GPa.
 
 Every benchmark is a sequence of stages over *all* materials of a chunk, and only two operations touch the
 MLIP: `relax` and `single_point` of a simulator (`src/matcalc/simulation/`). Relaxations use the FIRE
-optimizer on a Frechet cell filter, so atomic positions and the cell relax together. A relaxation counts as
-converged when the largest force on any atom is at most `fmax` (the residual cell stress is not checked,
-as in upstream matcalc).
+optimizer on a Frechet cell filter, so atomic positions and the cell relax together. In Equilibrium and
+Elasticity a relaxation counts as converged when the largest force on any atom is at most `fmax` (the
+residual cell stress is not checked, as in upstream matcalc); the Phonon benchmark requires FIRE's own
+criterion, every force on the atoms and on the cell below `fmax`.
 
 `n_samples` and `seed` select a random subset (`random.Random(seed).sample`, the same subset upstream
 matcalc draws with that seed).
@@ -49,27 +51,36 @@ Columns: `K_vrh_DFT`, `G_vrh_DFT`, `K_vrh_<model>`, `G_vrh_<model>`, `relax_step
 
 ## Phonon — `PhononBenchmark` (`benchmarks/phonon.py`)
 
-Dataset: `alexandria-binary-pbe-phonon-2025.1.json.gz`, 1,170 binary compounds (primitive cells of 2–180
-atoms).
+Dataset: `benchmarks/data/alexandria-pbe-phonon.json.gz` (part of the package), the 1,170 binary compounds
+of upstream's Phonon benchmark with the settings of their DFT phonon calculations. The DFT reference is the
+Alexandria PBE phonon database (A. Loew, D. Sun, H.-C. Wang, S. Botti, M. A. L. Marques, npj Comput. Mater.
+2025, doi:10.1038/s41524-025-01650-1; data at https://alexandria.icams.rub.de/data/phonon_benchmark/,
+CC BY 4.0), a PBE recalculation of the MDR phonon database with phonopy. The benchmark repeats that
+calculation with the MLIP, following the paper's protocol for MLIPs; `scripts/build_phonon_dataset.py`
+extracts the settings from Alexandria's phonopy files.
 
-1. **Relaxation** of atoms and cell (0.05 eV/Å, at most 5000 steps). The relaxed structure is used even if
-   the relaxation did not converge; `status` then reads `ok (relaxation not converged)`.
-2. **Displacements.** phonopy builds a supercell that repeats the cell `ceil(L / |a_i|)` times along each
-   lattice vector a_i and displaces each symmetry-distinct atom by 0.015 Å (`symprec` = 1e-5 Å); the
-   dataset needs about 35,000 displaced supercells. L = `min_supercell_length` is 15 Å (median 270 atoms,
-   up to 1,950); upstream matcalc uses 20 Å (median 512, up to 3,822), which `min_supercell_length=20`
-   reproduces. For compounds without imaginary modes C_V at 15 Å agrees with 20 Å (and with 25 Å) within
-   0.72 J/(K·mol); compounds that are dynamically unstable with the MLIP get a C_V that depends on the
-   supercell whatever its size, because phonopy leaves imaginary modes out of the thermal properties
-   ([validation](validation.md)). The DFT reference (Alexandria) used supercells of at least 12 Å.
+1. **Relaxation** of the PBE unit cell of the DFT calculation (conventional cell, 2–180 atoms): FIRE on a
+   Frechet cell filter with a symmetry constraint that keeps the space group (ASE's `FixSymmetry`, or
+   TorchSim's), until every force on the atoms and on the cell is below 0.005 eV/Å, at most `max_steps`
+   (5000) steps. A compound whose relaxation does not converge gets no prediction (`status` reads
+   `relaxation not converged`).
+2. **Displacements.** phonopy with the supercell matrix (diagonal, on the conventional cell; supercells of
+   24–180 atoms, median 108) and the primitive matrix of the DFT calculation, and with the same displaced
+   atoms and displacements (0.01 Å): 36,407 displaced supercells in total, the same cells as in DFT.
 3. **Forces** on every displaced supercell (single points).
-4. **Thermal properties.** Force constants → phonon frequencies on phonopy's default q-point mesh →
-   C_V(T) in the harmonic approximation, on a 0–1000 K grid in 10 K steps. `CV` is C_V at 300 K, in
-   J/(K·mol) per mole of primitive cells (at most 3R × atoms per cell).
+4. **Harmonic properties.** Compact force constants → frequencies on a 20 x 20 x 20 q-point mesh → C_V at
+   300 K, in J/(K·mol) per mole of primitive cells. The compound is **dynamically stable** when no
+   frequency at the q-points commensurate with the supercell is below -50 K (-1.04 THz), the criterion of
+   the reference.
 
-Columns: `CV_DFT`, `CV_<model>`, `min_frequency_<model>` (lowest frequency on the mesh in THz; negative
-values are imaginary modes, i.e. the structure is dynamically unstable with this MLIP),
-`relax_steps_<model>`, `status_<model>`. Summary: MAE and STDAE of `CV`.
+174 compounds are dynamically unstable already in DFT (`stable_DFT` is false); phonopy leaves imaginary
+modes out of C_V, so for them the value depends on details of the calculation. `summarize` reports the
+errors over all compounds and over the 996 DFT-stable ones (`"CV (DFT-stable)"`), and a stability table
+(`TS`/`TU`: stable/unstable in both; `FU`: stable only in DFT; `FS`: stable only with the MLIP).
+
+Columns: `CV_DFT`, `stable_DFT`, `CV_<model>`, `stable_<model>`, `min_frequency_<model>` (lowest frequency
+at the commensurate q-points, THz; negative values are imaginary modes), `relax_steps_<model>`,
+`status_<model>`.
 
 ## Softening — `SofteningBenchmark` (`benchmarks/softening.py`)
 
