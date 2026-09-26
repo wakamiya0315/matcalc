@@ -234,8 +234,11 @@ def test_structures_that_do_not_fit_alone_fail_without_stopping_the_others() -> 
     small = _OutOfMemoryModel(lj_model(), max_atoms=2)
     results = TorchSimSimulator(small, show_progress=False).single_point(cells)
     assert [r.error for r in results] == ["GPU out of memory", "GPU out of memory", None, "GPU out of memory", None]
-    # The two rattled fcc Cu cells have the same size: after the first failed, the second is not tried.
-    assert sum(n == 1 for n in small.batches) == len(cells) - 1
+    # One structure per batch: the two rattled fcc Cu cells have the same size, so after the first one
+    # failed the second is not tried.
+    alone = _OutOfMemoryModel(lj_model(), max_atoms=2)
+    TorchSimSimulator(alone, max_memory_scaler=1e-3, show_progress=False).single_point(cells)
+    assert len(alone.batches) == len(cells) - 1
     assert np.isfinite(results[2].energy)
     assert np.isfinite(results[4].energy)
 
