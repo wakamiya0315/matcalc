@@ -50,6 +50,10 @@ MAX_OUT_OF_MEMORY_RETRIES = 3
 OUT_OF_MEMORY_BACKOFF = 0.8
 """After a batch of single points runs out of GPU memory, the capacity is lowered to this fraction of it."""
 
+OUT_OF_MEMORY_MESSAGES = ("out of memory", "Failed to allocate")
+"""Parts of the messages of out-of-memory errors: PyTorch's, and those of kernels that allocate GPU memory
+themselves, such as cuEquivariance's ("cudaErrorMemoryAllocation:out of memory")."""
+
 
 def ase_consistent_fire_step(state: Any, model: ModelInterface, **kwargs: Any) -> Any:
     """One step of TorchSim's ASE-flavoured FIRE, corrected to follow ASE's FIRE exactly.
@@ -464,7 +468,10 @@ class TorchSimSimulator:
             if known is not None and known[0] <= low and high <= known[1]:
                 capacity = known[2]
             else:
-                capacity = estimate_max_memory_scaler(state, self.model, list(metric)) * self.memory_padding
+                capacity = estimate_max_memory_scaler(
+                    state, self.model, list(metric), oom_error_message=OUT_OF_MEMORY_MESSAGES
+                )
+                capacity *= self.memory_padding
                 if known is not None:  # the range now covers both calls: keep the smaller capacity
                     low, high, capacity = min(low, known[0]), max(high, known[1]), min(capacity, known[2])
                 self._measured[stress] = (low, high, capacity)
@@ -490,7 +497,7 @@ def _free_gpu_memory() -> None:
 
 def _out_of_memory(exc: BaseException) -> bool:
     # Out-of-memory errors raised inside TorchScript models arrive as plain RuntimeErrors.
-    return any(message in str(exc) for message in ("out of memory", "Failed to allocate"))
+    return any(message in str(exc) for message in OUT_OF_MEMORY_MESSAGES)
 
 
 def _unmoved(structure: Structure | Atoms, start: SinglePointResult, fmax: float) -> RelaxResult:
