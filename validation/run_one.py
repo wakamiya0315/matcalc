@@ -18,6 +18,7 @@ def main() -> None:
     parser.add_argument("--dtype", default="float64", choices=["float64", "float32"])
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--min-supercell-length", type=float, default=None, help="phonon only (A)")
+    parser.add_argument("--cueq", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -52,7 +53,7 @@ def main() -> None:
         from matcalc.simulation.torchsim import TorchSimSimulator
 
         backend = "torchsim" if args.code == "fork-torchsim" else "ase"
-        model = matcalc.load_mace("MACE-MatPES-PBE-0", backend=backend, dtype=args.dtype)
+        model = matcalc.load_mace("MACE-MatPES-PBE-0", backend=backend, dtype=args.dtype, cueq=args.cueq)
         simulator = (TorchSimSimulator(model, show_progress=False) if backend == "torchsim"
                      else matcalc.ASESimulator(model, show_progress=False))
         options = {} if args.min_supercell_length is None else {"min_supercell_length": args.min_supercell_length}
@@ -67,7 +68,7 @@ def main() -> None:
     end = time.perf_counter()
     table = table[[c for c in table.columns if not c.startswith("structure_")]]
     table.to_csv(args.out, index=False)
-    info = {"code": args.code, "dtype": args.dtype, "workers": args.workers,
+    info = {"code": args.code, "dtype": args.dtype, "workers": args.workers, "cueq": args.cueq,
             "min_supercell_length": args.min_supercell_length,
             "benchmark": args.benchmark, "n": len(table), "setup_s": round(loaded - start, 1),
             "run_s": round(end - loaded, 1), "gpu": torch.cuda.get_device_name(0),
