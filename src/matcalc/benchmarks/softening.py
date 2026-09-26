@@ -74,10 +74,11 @@ class SofteningBenchmark(Benchmark):
             for material in materials:
                 own_frames = material.reference["frames"]
                 own = [next(forces) for _ in own_frames]
-                errors = [r.error for r in own if r.error is not None]
+                errors = [r.error or "no forces" for r in own if r.error is not None or r.forces is None]
                 if errors:
                     predictions.append(failed(f"single point failed: {errors[0]}", ("softening_scale",)))
                     continue
-                scale = softening_scale([frame["vasp_f"] for frame in own_frames], [r.forces for r in own])
+                mlip_forces = [r.forces for r in own if r.forces is not None]
+                scale = softening_scale([frame["vasp_f"] for frame in own_frames], mlip_forces)
                 predictions.append({"softening_scale": scale, "status": OK})
         return predictions

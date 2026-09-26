@@ -335,29 +335,28 @@ class TorchSimSimulator:
         """
         if not structures:
             return []
-        if fix_symmetry:
-            # ASE's FixSymmetry first snaps the structure onto its symmetry; the same function is used here.
-            structures = [_refined(structure, symprec) for structure in structures]
+        # ASE's FixSymmetry first snaps the structure onto its symmetry; the same function is used here.
+        cells: list[Structure | Atoms] = (
+            [_refined(s, symprec) for s in structures] if fix_symmetry else list(structures)
+        )
         # Like ASE, structures that are already relaxed are not moved at all.
-        starts = self.single_point(structures, compute_stress=True)
+        starts = self.single_point(cells, compute_stress=True)
         if fix_symmetry:
-            starts = self._symmetrized(structures, starts, symprec)
+            starts = self._symmetrized(cells, starts, symprec)
         todo = [
-            i
-            for i, (s, r) in enumerate(zip(structures, starts, strict=True))
-            if not converged_before_relaxing(s, r, fmax)
+            i for i, (s, r) in enumerate(zip(cells, starts, strict=True)) if not converged_before_relaxing(s, r, fmax)
         ]
-        results = [_unmoved(structures[i], starts[i], fmax) for i in range(len(structures))]
+        results = [_unmoved(cells[i], starts[i], fmax) for i in range(len(cells))]
         if todo:
             relaxed = self._relax_batched(
-                [structures[i] for i in todo], fmax, max_steps, fix_symmetry=fix_symmetry, symprec=symprec
+                [cells[i] for i in todo], fmax, max_steps, fix_symmetry=fix_symmetry, symprec=symprec
             )
             for i, result in zip(todo, relaxed, strict=True):
                 results[i] = result
         return results
 
     def _symmetrized(
-        self, structures: Sequence[Structure], results: list[SinglePointResult], symprec: float
+        self, structures: Sequence[Structure | Atoms], results: list[SinglePointResult], symprec: float
     ) -> list[SinglePointResult]:
         """Forces and stress symmetrized like the constraint does, for the test before the first step."""
         state = self._state(structures)
@@ -384,7 +383,13 @@ class TorchSimSimulator:
         ]
 
     def _relax_batched(
-        self, structures: Sequence[Structure], fmax: float, max_steps: int, *, fix_symmetry: bool, symprec: float
+        self,
+        structures: Sequence[Structure | Atoms],
+        fmax: float,
+        max_steps: int,
+        *,
+        fix_symmetry: bool,
+        symprec: float,
     ) -> list[RelaxResult]:
         state = self._state(structures)
         if fix_symmetry:
@@ -568,11 +573,11 @@ class TorchSimSimulator:
         elif not self._measures_memory:
             capacity = float(sum(metric)) * (1 + 1e-6) + 1.0  # no GPU memory to measure: one batch
         else:
-            metric = np.asarray(metric, dtype=float)
+            values = np.asarray(metric, dtype=float)
             n_atoms = state.n_atoms_per_system.detach().cpu().numpy().astype(float)
-            shares = memory_shares(self._memory_probes(state, metric), n_atoms, metric)
+            shares = memory_shares(self._memory_probes(state, values), n_atoms, values)
             budget = self._budget.get(self.model.compute_stress, self.memory_padding)
-            capacity = batch_capacity(shares, metric, budget)
+            capacity = batch_capacity(shares, values, budget)
         self.capacities.append(capacity)
         logger.info("TorchSim batch capacity: %.4g (%d structures)", capacity, state.n_systems)
         return capacity, shares

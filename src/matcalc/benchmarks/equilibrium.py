@@ -163,22 +163,24 @@ class EquilibriumBenchmark(Benchmark):
                 relaxed = simulator.relax(starts, fmax=self.fmax, max_steps=self.max_steps)
             # Fingerprints of the relaxed compounds, in the worker processes; the first time, while the GPU
             # relaxes the elemental references.
-            done = [i for i, result in enumerate(relaxed) if result.structure is not None and result.converged]
-            fingerprints = pool_map(pool, structure_fingerprint_or_error, [relaxed[i].structure for i in done])
+            done = [(i, r.structure) for i, r in enumerate(relaxed) if r.structure is not None and r.converged]
+            fingerprints = pool_map(pool, structure_fingerprint_or_error, [structure for _, structure in done])
             if "reference_energies" not in self._cache:
                 self.relax_elemental_references(simulator)
             predictions = [self._predict(result) for result in relaxed]
 
             with self.stage("fingerprints"):
                 self._dft_fingerprints.update(zip(new_dft, dft_fingerprints, strict=True))
-                for i, relaxed_fingerprint in zip(done, fingerprints, strict=True):
+                for (i, _), relaxed_fingerprint in zip(done, fingerprints, strict=True):
                     if predictions[i]["status"] != OK:  # no reference energy for one of its elements
                         continue
                     dft_fingerprint = self._dft_fingerprints[materials[i].material_id]
-                    for fingerprint in (relaxed_fingerprint, dft_fingerprint):
-                        if isinstance(fingerprint, str):  # the error message
-                            predictions[i]["status"] = f"fingerprint failed: {fingerprint}"
-                    if predictions[i]["status"] == OK:
+                    # A failed fingerprint is the error message.
+                    if isinstance(dft_fingerprint, str):
+                        predictions[i]["status"] = f"fingerprint failed: {dft_fingerprint}"
+                    elif isinstance(relaxed_fingerprint, str):
+                        predictions[i]["status"] = f"fingerprint failed: {relaxed_fingerprint}"
+                    else:
                         predictions[i]["d"] = fingerprint_distance(relaxed_fingerprint, dft_fingerprint)
         return predictions
 

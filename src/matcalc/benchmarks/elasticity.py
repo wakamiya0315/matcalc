@@ -33,6 +33,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import numpy as np
+    from ase import Atoms
+    from pymatgen.core import Structure
 
     from matcalc.simulation import RelaxResult, Simulator
 
@@ -125,7 +127,7 @@ class ElasticityBenchmark(Benchmark):
         predictions: list[dict[str, Any]] = [{} for _ in materials]
         with self.stage("strain"):
             # Per compound: the strained cells, then the relaxed cell (whose stress is the zero-strain point).
-            cells = {}
+            cells: dict[int, list[Structure | Atoms]] = {}
             for i, result in enumerate(relaxed):
                 if result.converged and result.structure is not None:
                     strained, _ = strained_structures(result.structure, self.normal_strains, self.shear_strains)
@@ -143,11 +145,11 @@ class ElasticityBenchmark(Benchmark):
                 jobs = []
                 for i in part:
                     own = [next(stresses) for _ in cells[i]]
-                    errors = [r.error for r in own if r.error is not None]
+                    errors = [r.error or "no stress" for r in own if r.error is not None or r.stress is None]
                     if errors:
                         predictions[i] = failed(f"single point failed: {errors[0]}", QUANTITIES)
                     else:
-                        stress = [r.stress for r in own]
+                        stress = [r.stress for r in own if r.stress is not None]
                         jobs.append((i, FitJob(self.normal_strains, self.shear_strains, stress[:-1], stress[-1])))
                 with self.stage("fit"):  # only the time the GPU waits for the CPU
                     pending.append(([i for i, _ in jobs], pool_map(pool, moduli_of, [job for _, job in jobs])))
