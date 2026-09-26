@@ -13,7 +13,7 @@ Recipe (settings as in upstream matcalc):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from matcalc.properties.phonon import ThermalProperties, displaced_supercells, make_phonopy, thermal_properties
@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 
     import numpy as np
     from ase import Atoms
-    from phonopy import Phonopy
     from pymatgen.core import Structure
 
     from matcalc.simulation import Simulator
@@ -120,19 +119,20 @@ class PhononBenchmark(Benchmark):
         with self.stage("relax"):
             relaxed = simulator.relax([m.structure for m in materials], fmax=self.fmax, max_steps=self.max_steps)
 
+        # Setting up phonopy (symmetry of the supercell) needs only the CPU; it runs in parallel processes.
         with self.stage("displacements"):
-            phonons: list[Phonopy | None] = []
-            supercells: list[list[Atoms]] = []
-            for result in relaxed:
-                if result.structure is None:
-                    phonons.append(None)
-                    supercells.append([])
-                    continue
-                phonon = make_phonopy(
-                    result.structure, min_supercell_length=self.min_supercell_length, symprec=self.symprec
+            settings = [
+                None
+                if result.structure is None
+                else PhononJob(result.structure, [], self.min_supercell_length, self.symprec, self.displacement)
+                for result in relaxed
+            ]
+            generated = iter(
+                parallel_map(
+                    displaced_supercells_of, [job for job in settings if job is not None], workers=self.workers
                 )
-                phonons.append(phonon)
-                supercells.append(displaced_supercells(phonon, displacement=self.displacement))
+            )
+            supercells: list[list[Atoms]] = [[] if job is None else next(generated) for job in settings]
 
         # The forces of all displaced supercells of all compounds are computed in one call.
         with self.stage("single points"):
@@ -142,23 +142,16 @@ class PhononBenchmark(Benchmark):
 
         predictions: list[dict[str, Any]] = []
         jobs: list[tuple[int, PhononJob]] = []
-        for result, phonon, cells in zip(relaxed, phonons, supercells, strict=True):
+        for result, setting, cells in zip(relaxed, settings, supercells, strict=True):
             own = [next(forces) for _ in cells]
             errors = [r.error for r in own if r.error is not None]
-            if phonon is None:
+            if setting is None:
                 predictions.append(failed(result.error or "relaxation failed", QUANTITIES))
             elif errors:
                 predictions.append(failed(f"single point failed: {errors[0]}", QUANTITIES))
             else:
                 predictions.append({})
-                job = PhononJob(
-                    result.structure,
-                    [r.forces for r in own],
-                    self.min_supercell_length,
-                    self.symprec,
-                    self.displacement,
-                )
-                jobs.append((len(predictions) - 1, job))
+                jobs.append((len(predictions) - 1, replace(setting, forces=[r.forces for r in own])))
 
         # Force constants and thermal properties need only the CPU; they run in parallel processes.
         with self.stage("phonopy"):
@@ -181,7 +174,8 @@ class PhononJob:
 
     Attributes:
         structure: Relaxed primitive cell.
-        forces: Forces on every displaced supercell (eV/Å), in phonopy's order.
+        forces: Forces on every displaced supercell (eV/Å), in phonopy's order (empty before the single
+            points).
         min_supercell_length: Minimum supercell length (Å).
         symprec: Symmetry tolerance (Å).
         displacement: Finite displacement (Å).
@@ -192,6 +186,19 @@ class PhononJob:
     min_supercell_length: float
     symprec: float
     displacement: float
+
+
+def displaced_supercells_of(job: PhononJob) -> list[Atoms]:
+    """Set up phonopy for one compound and generate its displaced supercells.
+
+    Args:
+        job: Relaxed cell and phonopy settings of one compound (``forces`` is not used).
+
+    Returns:
+        The displaced supercells, in phonopy's order.
+    """
+    phonon = make_phonopy(job.structure, min_supercell_length=job.min_supercell_length, symprec=job.symprec)
+    return displaced_supercells(phonon, displacement=job.displacement)
 
 
 def thermal_properties_of(job: PhononJob) -> ThermalProperties:
