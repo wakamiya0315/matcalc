@@ -1,4 +1,4 @@
-"""V2: run one benchmark with the upstream code (main) or the refactored code, same MACE model."""
+"""V2: run one benchmark with the upstream code (branch upstream-main) or the refactored code, same MACE model."""
 
 import argparse
 import json

@@ -7,6 +7,9 @@ runs is MACE-MatPES-PBE-0 in float64, used only as a test model (it is not part 
 0.6.2, moyopy 0.20.0, mace-torch 0.3.16, ase 3.29.0, pymatgen 2026.9.23, phonopy 4.6.0. Scripts are in
 [`validation/`](../validation/).
 
+"Upstream `main`" below is materialyzeai/matcalc at `b04715d` (2026-09-09), kept in this fork as the branch
+`upstream-main`.
+
 Agreement is judged material by material with these tolerances: |ΔK_vrh|, |ΔG_vrh| ≤ 1 GPa;
 |ΔC_V(300 K)| ≤ 0.5 J/(K·mol); |ΔE_form| ≤ 5 meV/atom; |Δd| ≤ 0.01; |Δ softening scale| ≤ 0.01; and the same
 materials without a prediction (NaN).

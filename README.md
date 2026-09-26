@@ -10,7 +10,8 @@ four benchmarks for machine-learning interatomic potentials (MLIPs):
 | Phonon | heat capacity `CV` at 300 K (J/(K·mol)) and dynamical stability | 1,170 binary compounds (Alexandria) |
 | Softening | slope of MLIP forces against DFT forces on high-energy configurations | 979 WBM materials, 9,308 frames |
 
-The `main` branch is the unmodified upstream code. This branch keeps only the benchmarks. Equilibrium,
+The unmodified upstream code (materialyzeai/matcalc at `b04715d`, 2026-09-09) is kept on the branch
+[`upstream-main`](https://github.com/wakamiya0315/matcalc/tree/upstream-main). Equilibrium,
 Elasticity and Softening give the same numbers as upstream; the Phonon benchmark follows the protocol of
 its DFT reference instead (see [Differences from upstream](#differences-from-upstream)). What each
 benchmark computes, step by step and with units, is described in [docs/benchmarks.md](docs/benchmarks.md).
@@ -18,8 +19,12 @@ benchmark computes, step by step and with units, is described in [docs/benchmark
 ## Install
 
 ```bash
+git clone https://github.com/wakamiya0315/matcalc.git && cd matcalc
 pip install -e ".[torchsim,benchmark]"
 ```
+
+or, without a clone, `pip install "matcalc[torchsim,benchmark] @ git+https://github.com/wakamiya0315/matcalc.git"`.
+The package is still called `matcalc` and replaces upstream's in the same environment.
 
 `torchsim` installs TorchSim (`torch-sim-atomistic` ≥ 0.6.2, and `moyopy` for its symmetry constraint) for
 batched GPU runs; `benchmark` installs `matminer`, needed for the structural distance of the Equilibrium
@@ -78,6 +83,18 @@ Agreement with the ASE path and wall times are reported in [docs/validation.md](
 Each result table has one row per material: the id, the formula, the DFT values (`<quantity>_DFT`), the
 predictions (`<quantity>_<model>`), and `status_<model>`, which is `ok` or the reason a prediction is
 missing (for example a relaxation that did not converge). The column names are those of upstream matcalc.
+
+## Tests
+
+```bash
+pip install -e ".[torchsim,benchmark,test]"
+pytest tests
+```
+
+The tests run on the CPU in a few minutes, with the EMT and Lennard-Jones potentials on tiny datasets
+(TorchSimSimulator is checked against ASESimulator on the same potential). GitHub Actions runs them, and
+ruff and mypy, on every push and pull request to `main`. GPU runs with a real MLIP are described in
+[docs/validation.md](docs/validation.md).
 
 ## How the code is organized
 

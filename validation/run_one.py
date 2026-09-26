@@ -1,5 +1,5 @@
-"""Run one benchmark with MACE-MatPES-PBE-0 (the test model): upstream main (ASE, n_jobs=1) or this fork
-(ASE or TorchSim). Writes the table (CSV) and the timings and summary (JSON next to it)."""
+"""Run one benchmark with MACE-MatPES-PBE-0 (the test model): upstream matcalc (branch upstream-main; ASE,
+n_jobs=1) or this fork (ASE or TorchSim). Writes the table (CSV) and the timings and summary (JSON next to it)."""
 
 import argparse
 import json

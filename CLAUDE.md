@@ -5,8 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this fork is
 
 A fork of materialyzeai/matcalc reduced to the four benchmarks (Equilibrium, Elasticity, Phonon,
-Softening). `main` mirrors upstream and is never committed to; the work is on `feature/torchsim` (the
-refactoring and the TorchSim simulator). Equilibrium, Elasticity and Softening
+Softening). `main` is this fork (the refactoring and the TorchSim simulator); changes reach it through
+pull requests from feature branches, and CI (`.github/workflows/`) runs ruff, mypy and the CPU tests on
+them. `upstream-main` mirrors upstream's `main` and is never committed to (update it with
+`git fetch upstream && git push origin upstream/main:upstream-main`). Equilibrium, Elasticity and Softening
 must give the same numbers as upstream unless a change is listed under "Changed on purpose" in
 `README.md`; the Phonon benchmark follows the protocol of its DFT reference (Alexandria, Loew et al. 2025),
 not upstream.
