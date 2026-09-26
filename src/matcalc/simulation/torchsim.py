@@ -328,6 +328,9 @@ class TorchSimSimulator:
         """
         if not structures:
             return []
+        if fix_symmetry:
+            # ASE's FixSymmetry first snaps the structure onto its symmetry; the same function is used here.
+            structures = [_refined(structure, symprec) for structure in structures]
         # Like ASE, structures that are already relaxed are not moved at all.
         starts = self.single_point(structures, compute_stress=True)
         if fix_symmetry:
@@ -573,6 +576,15 @@ class TorchSimSimulator:
         known = self._measured.get(self.model.compute_stress)
         if known is not None:
             self._measured[self.model.compute_stress] = (known[0], known[1], min(known[2], capacity))
+
+
+def _refined(structure: Structure | Atoms, symprec: float) -> Atoms:
+    """A copy of the structure with its symmetry made exact, as ASE's ``FixSymmetry`` does on creation."""
+    from ase.spacegroup.symmetrize import refine_symmetry
+
+    atoms = to_ase_atoms(structure).copy()
+    refine_symmetry(atoms, symprec)
+    return atoms
 
 
 def _pack(indices: Iterable[int], metric: Sequence[float], capacity: float) -> list[list[int]]:

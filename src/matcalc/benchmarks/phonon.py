@@ -24,6 +24,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import numpy as np
 import pandas as pd
 from pymatgen.core import Structure
 
@@ -34,7 +35,6 @@ from ._common import OK, Benchmark, Material, failed, pool_map, worker_pool
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import numpy as np
     from ase import Atoms
 
     from matcalc.simulation import Simulator
@@ -58,8 +58,9 @@ class PhononBenchmark(Benchmark):
     Attributes:
         fmax: Force threshold of the relaxation (eV/Å).
         max_steps: Maximum number of FIRE steps; a relaxation that has not converged by then gives NaN.
-        symprec: Symmetry tolerance of the symmetry constraint during the relaxation (Å). phonopy uses
-            the tolerance of the DFT calculation (1e-5 Å).
+        symprec: Symmetry tolerance of the symmetry constraint during the relaxation (Å): that of the DFT
+            calculation (1e-5 Å), so that the constraint keeps the space group of the DFT structure (29
+            structures would get a higher one at ASE's default of 0.01 Å).
         temperature: Temperature of the heat capacity (K).
         mesh: q-point mesh of the heat capacity.
     """
@@ -79,7 +80,7 @@ class PhononBenchmark(Benchmark):
         seed: int = 42,
         fmax: float = 0.005,
         max_steps: int = 5000,
-        symprec: float = 0.01,
+        symprec: float = 1e-5,
         temperature: float = 300.0,
         mesh: tuple[int, int, int] = (20, 20, 20),
         workers: int = 1,
@@ -122,7 +123,8 @@ class PhononBenchmark(Benchmark):
                 Structure(entry["lattice"], entry["species"], entry["frac_coords"]),
                 reference={"CV": entry["heat_capacity"], "stable": entry["stable"]},
                 settings={
-                    key: entry[key] for key in ("supercell_matrix", "primitive_matrix", "displacements", "symprec")
+                    key: entry[key]
+                    for key in ("supercell_matrix", "primitive_matrix", "displacements", "symprec", "space_group")
                 },
             )
             for entry in raw["entries"]
@@ -162,9 +164,18 @@ class PhononBenchmark(Benchmark):
         with worker_pool(self.workers) as pool:
             # Setting up phonopy (symmetry of the supercell) needs only the CPU.
             with self.stage("displacements"):
-                supercells = dict(
+                generated = dict(
                     zip(todo, pool_map(pool, displaced_supercells_of, [jobs[i] for i in todo]), strict=True)
                 )
+            supercells: dict[int, list[Atoms]] = {}
+            notes: dict[int, str] = {}
+            for i, outcome in generated.items():
+                if isinstance(outcome, str):
+                    predictions[i] = failed(outcome, QUANTITIES)
+                else:
+                    supercells[i], displacements, notes[i] = outcome
+                    jobs[i] = replace(jobs[i], displacements=displacements)
+            todo = [i for i in todo if i in supercells]
             # The forces are computed part by part; the phonopy step of a part (force constants and
             # frequencies, CPU only) runs in the worker processes while the GPU computes the next part.
             pending = []
@@ -188,11 +199,14 @@ class PhononBenchmark(Benchmark):
             with self.stage("phonopy"):
                 for indices, results in pending:
                     for i, harmonic in zip(indices, results, strict=True):
+                        if isinstance(harmonic, str):
+                            predictions[i] = failed(harmonic, QUANTITIES)
+                            continue
                         predictions[i] = {
                             "CV": harmonic.heat_capacity,
                             "stable": harmonic.dynamically_stable,
                             "min_frequency": harmonic.min_frequency,
-                            "status": OK,
+                            "status": OK + notes[i],
                         }
         return [
             prediction | {"relax_steps": result.n_steps}
@@ -243,6 +257,7 @@ class PhononJob:
         primitive_matrix: Primitive matrix of the DFT calculation (``None``: the unit cell is primitive).
         displacements: Displaced atoms and displacements of the DFT calculation.
         symprec: Symmetry tolerance of phonopy in the DFT calculation (Å).
+        space_group: Space group number of the DFT structure.
         temperature: Temperature of the heat capacity (K).
         mesh: q-point mesh of the heat capacity.
     """
@@ -253,35 +268,55 @@ class PhononJob:
     primitive_matrix: list[list[float]] | None
     displacements: list[list[float]]
     symprec: float
+    space_group: int
     temperature: float
     mesh: tuple[int, int, int]
 
 
-def displaced_supercells_of(job: PhononJob) -> list[Atoms]:
+def displaced_supercells_of(job: PhononJob) -> tuple[list[Atoms], list[list[float]], str] | str:
     """Set up phonopy for one compound and build its displaced supercells.
+
+    The displacements of the DFT calculation match the symmetry of the DFT structure. The relaxation keeps
+    that space group (symmetry constraint with the DFT's tolerance); should phonopy find another one in the
+    relaxed structure (it can only become higher), phonopy generates displacements for it anew, with the
+    same amplitude.
 
     Args:
         job: Relaxed cell and phonopy settings of one compound (``forces`` is not used).
 
     Returns:
-        The displaced supercells, in the order of ``job.displacements``.
+        The displaced supercells, the displacements used, and a note for ``status`` ("" normally); or why
+        phonopy failed.
     """
-    phonon = make_phonopy(job.structure, job.supercell_matrix, job.primitive_matrix, symprec=job.symprec)
-    return displaced_supercells(phonon, job.displacements)
+    try:
+        phonon = make_phonopy(job.structure, job.supercell_matrix, job.primitive_matrix, symprec=job.symprec)
+        displacements, note = job.displacements, ""
+        found = phonon.symmetry.dataset.number
+        if found != job.space_group:
+            amplitude = float(np.linalg.norm(job.displacements[0][1:4]))
+            phonon.generate_displacements(distance=amplitude)
+            displacements = [[d["number"], *d["displacement"]] for d in phonon.dataset["first_atoms"]]
+            note = f" (space group {job.space_group} -> {found}; displacements generated by phonopy)"
+        return displaced_supercells(phonon, displacements), displacements, note
+    except Exception as exc:  # noqa: BLE001 - one compound must not stop the benchmark
+        return f"phonopy failed: {type(exc).__name__}: {exc}"
 
 
-def harmonic_properties_of(job: PhononJob) -> HarmonicProperties:
+def harmonic_properties_of(job: PhononJob) -> HarmonicProperties | str:
     """Set up phonopy for one compound again and compute its heat capacity and stability.
 
     Args:
         job: Relaxed cell, phonopy settings and forces of one compound.
 
     Returns:
-        Its harmonic properties.
+        Its harmonic properties, or why phonopy failed.
     """
-    phonon = make_phonopy(job.structure, job.supercell_matrix, job.primitive_matrix, symprec=job.symprec)
-    displaced_supercells(phonon, job.displacements)
-    return harmonic_properties(phonon, job.forces, temperature=job.temperature, mesh=job.mesh)
+    try:
+        phonon = make_phonopy(job.structure, job.supercell_matrix, job.primitive_matrix, symprec=job.symprec)
+        displaced_supercells(phonon, job.displacements)
+        return harmonic_properties(phonon, job.forces, temperature=job.temperature, mesh=job.mesh)
+    except Exception as exc:  # noqa: BLE001 - one compound must not stop the benchmark
+        return f"phonopy failed: {type(exc).__name__}: {exc}"
 
 
 def _parts(indices: list[int], supercells: dict[int, list[Atoms]], n_parts: int) -> list[list[int]]:

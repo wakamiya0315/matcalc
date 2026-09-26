@@ -67,6 +67,7 @@ def phonon_entry(
         "primitive_matrix": primitive_matrix,
         "displacements": [[d["number"], *d["displacement"]] for d in phonon.dataset["first_atoms"]],
         "symprec": 1e-5,
+        "space_group": phonon.symmetry.dataset.number,
         "heat_capacity": heat_capacity,
         "stable": stable,
     }
