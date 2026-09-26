@@ -2,83 +2,73 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## What this fork is
+
+A fork of materialyzeai/matcalc reduced to the four benchmarks (Equilibrium, Elasticity, Phonon,
+Softening). `main` is this fork (the refactoring and the TorchSim simulator); changes reach it through
+pull requests from feature branches, and CI (`.github/workflows/`) runs ruff, mypy and the CPU tests on
+them. `upstream-main` mirrors upstream's `main` and is never committed to (update it with
+`git fetch upstream && git push origin upstream/main:upstream-main`). Equilibrium, Elasticity and Softening
+must give the same numbers as upstream unless a change is listed under "Changed on purpose" in
+`README.md`; the Phonon benchmark follows the protocol of its DFT reference (Alexandria, Loew et al. 2025),
+not upstream.
+
+The library contains only the benchmarks and the generic simulators. It does not load or depend on any
+MLIP: the user passes an ASE calculator or a TorchSim model. MACE (MACE-MatPES-PBE-0) is only the test
+model of the validation runs (`validation/mace_models.py`). Speed-ups belong on the benchmark side and
+must help any MLIP (no model-specific kernels or precision tricks).
+
 ## Common commands
 
-Dependency management uses `uv`. The `[ci]` extra installs everything needed for the full test suite (matgl, maml, matminer, mp-api, seekpath, jupyter/nbmake).
-
 ```bash
-# Install for development (full test deps)
-pip install -e '.[ci]'
-
-# Run the test suite
-pytest tests
-pytest tests/test_elasticity.py                       # single file
-pytest tests/test_elasticity.py::test_elasticity_calc # single test
-pytest --cov=matcalc --cov-report=xml tests           # with coverage (CI invocation)
-
-# Lint / format / typecheck (these are the CI gates)
-ruff check src
-ruff format src --check
+pip install -e ".[torchsim,benchmark,test]"
+pytest tests                        # fast, offline, CPU (EMT and Lennard-Jones on tiny datasets)
+ruff check src tests && ruff format --check src tests
 mypy -p matcalc
-
-# CLI entry point (installed as console script `matcalc`)
-matcalc calc -p ElasticityCalc -s structure.cif
-matcalc calc -p RelaxCalc -m TensorNet-MatPES-PBE-2025.2 -s structure.cif -o results.json
-matcalc clear   # clears ~/.cache/matcalc benchmark data
-
-# Release / docs automation (pyinvoke)
-invoke make-docs        # builds Sphinx + tutorials into docs/
-invoke update-changelog # generates changes.md entries from PR titles
-invoke release          # creates GitHub release for current pyproject version
+python scripts/build_phonon_dataset.py temp/alexandria src/matcalc/benchmarks/data/alexandria-pbe-phonon.json.gz
 ```
 
-The `Test` workflow runs inside `docker.io/materialyzeai/lammps_gnnp` because LAMMPS-backed tests need a LAMMPS build with ML-GNNP and ML-SNAP. Locally, LAMMPS-dependent tests will be skipped or fail without that environment.
+`temp/` (git-ignored) holds downloads such as Alexandria's phonopy files. Heavy runs and GPU tests are done
+on TSUBAME4 (iqrsh for tests up to ~15 min, `gpu_h` jobs for timing and full runs), from a checkout
+selected with `PYTHONPATH=<checkout>/src`, never inside the repository; `validation/run_one.py` runs one
+benchmark with MACE.
 
 ## Architecture
 
-### The `PropCalc` contract
-
-Everything in `src/matcalc/` is built around one base class in `_base.py`:
-
-- `PropCalc.calc(structure) -> dict[str, Any]` is the single entry point. `structure` may be a `pymatgen.Structure`, an `ase.Atoms`, **or a dict** containing `final_structure` / `structure`. The dict form is what makes chaining work: each calculator's output dict is fed into the next calculator's `calc`. A subclass's first line is typically `result = super().calc(structure)` to normalize the input and pull out `final_structure`.
-- `PropCalc.calc_many(structures, n_jobs=...)` parallelizes via `joblib.Parallel` and returns a generator. Pass `allow_errors=True` for large runs where you want failed structures to yield `None` instead of raising.
-- `PropCalc.calculator` is an ASE `Calculator` instance. The setter accepts either an existing `Calculator` or a model-name string — strings are routed through `PESCalculator.load_universal()`. This is why every concrete calc accepts `calculator: str | Calculator` in its constructor.
-- `ChainedCalc(prop_calcs)` runs calculators in sequence and accumulates their output dicts. The convention is to put a `RelaxCalc` first and then set `relax_structure=False` on downstream calcs to avoid re-relaxing.
-
-### Foundation potential registry (`utils.py`)
-
-`PESCalculator.load_universal(name)` (re-exported as `matcalc.load_fp` and `matcalc.load_up`) is the single dispatcher for loading any supported model. Two data structures drive it:
-
-- `MODEL_REGISTRY` — canonical name → `{provider, ...kwargs}`. Naming convention is `<Architecture>-<Dataset>-<Optional Version>`, e.g. `TensorNet-MatPES-PBE-2025.2`.
-- `MODEL_ALIASES` — short / legacy spellings (`pbe`, `r2scan`, `mace`, `chgnet`, …) that resolve to a canonical name. Lookups are case-insensitive.
-
-To add a new model, add an entry to `MODEL_REGISTRY` and (if the provider is new) extend the loader branch in `PESCalculator.load_universal`. Provider stacks (matgl, mace-torch, sevenn, tensorpotential, orb-models, mattersim, fairchem-core, pet-mad, deepmd-kit) are imported lazily inside their branches so that missing optional deps don't break import of `matcalc`.
-
-The `test-fp-loaders` matrix in `.github/workflows/test.yml` smoke-tests one canonical name per provider — keep it in sync when adding/removing canonical names for a covered provider.
-
-### Backends (`backend/`)
-
-Two simulation backends sit behind a thin dispatcher:
-
-- `backend/_ase.py` (`run_ase`) — default; uses ASE optimizers/MD drivers.
-- `backend/_lammps.py` (`run_lammps`) — used by `LAMMPSMDCalc` and friends.
-- `backend/__init__.py::run_pes_calc` chooses based on `MATCALC_BACKEND` env var (read once into `config.SIMULATION_BACKEND`, default `"ASE"`).
-
-`SimulationResult` (in `backend/_base.py`) is the common return shape — keep both backends returning structurally identical results so that downstream calcs don't branch on backend.
-
-### Elemental references and units
-
-- `src/matcalc/elemental_refs/*.json.gz` ships per-functional elemental references (MatPES-PBE, MatPES-r2SCAN, MP-PBE) used by `EnergeticsCalc` for formation/cohesive energies. `EnergeticsCalc` selects the reference set via the `functional` arg.
-- `units.py` holds conversion factors. The most-used one is `eVA3ToGPa` for stress/elastic-tensor unit conversion — prefer it over hand-rolled constants.
-
-### Benchmarks
-
-`benchmark.py` defines `Benchmark`, `BenchmarkSuite`, and concrete `ElasticityBenchmark`, `PhononBenchmark`, etc. Benchmark datasets are pulled from the `materialyze/matcalc-bench` HuggingFace repo and cached in `~/.cache/matcalc` (configured in `config.py`). Use `n_samples` during development to avoid full-dataset runs.
+- `benchmarks/_common.py` — `Benchmark` base class: dataset loading (Hugging Face name or local `Path`)
+  and seeded subsampling, chunked `run()` with a JSON checkpoint (resume skips finished material ids), the
+  result table (`<quantity>_DFT`, `<quantity>_<model>`, `status_<model>`), `summarize()` and per-stage
+  timings (`with self.stage(name):`). `Material.settings` carries DFT settings a benchmark reuses.
+- `benchmarks/{equilibrium,elasticity,phonon,softening}.py` — one benchmark each. `read_entries()` parses
+  the dataset; `evaluate(materials, simulator)` is the recipe: stages over all materials of a chunk.
+  `benchmarks/data/alexandria-pbe-phonon.json.gz` is the Phonon dataset (unit cells, supercell and
+  primitive matrices, displacements, C_V and stability of the DFT calculations).
+- `properties/` — physics as pure functions with no model code (elastic fit, phonopy, formation energy,
+  softening scale, fingerprints). Keep them independent of the simulator.
+- `simulation/` — the simulator interface (`relax`, `single_point`, result dataclasses in `base.py`) and
+  `ASESimulator` (FIRE + FrechetCellFilter, optionally ASE's `FixSymmetry`, one structure at a time; the
+  reference implementation). `as_simulator()` accepts a simulator, an ASE calculator or a TorchSim model.
+- `simulation/torchsim.py` — `TorchSimSimulator`: batched `relax` (in-flight FIRE + Frechet filter,
+  optionally TorchSim's `FixSymmetry`) and `single_point` (packed batches). It must stay step-for-step
+  identical to `ASESimulator`: the FIRE step wrapper (`ase_consistent_fire_step`), `ase_convergence` and
+  `converged_before_relaxing` exist for that and are checked by `tests/test_simulation_torchsim.py` (same
+  energies and step counts as ASE, with and without the symmetry constraint). The batch capacity is
+  derived from TorchSim's memory probes of the smallest and the largest structure (cached), which bound
+  the memory of every structure of a call (`memory_shares`, `batch_capacity`); after running out of memory
+  the capacity is lowered.
+- CPU post-processing (phonopy, stress-strain fits, fingerprints) runs in a `worker_pool` of spawned
+  processes (`pool_map`), overlapping with the GPU: single points are computed in parts
+  (`split_into_parts`) and the CPU work of one part runs while the GPU computes the next. Scripts that use
+  `workers > 1` need an `if __name__ == "__main__":` guard.
+- `datasets.py` (HF download, `sample_subset`); `scripts/build_phonon_dataset.py`.
 
 ## Conventions
 
-- Single-underscore module names (`_elasticity.py`, `_phonon.py`, …) are implementation modules; the public API is what `src/matcalc/__init__.py` re-exports. When adding a new calculator, add the import there.
-- All modules begin with `from __future__ import annotations` (enforced by ruff `isort.required-imports`). Ruff is run with `select = ["ALL"]`, so most lints are on; check `pyproject.toml` for the ignore list before disabling locally.
-- Docstrings follow Google style. Type hints are required (mypy runs in CI; `no_implicit_optional = false`).
-- `tests/conftest.py` provides session-scoped fixtures for common structures (`Si`, `Li2O`, `LiFePO4`, `SiO2`) and a `matpes_calculator` fixture. Reuse these instead of constructing structures inline. The autouse `setup_teardown` fixture cleans up files created during a test, so don't rely on artifacts persisting between tests.
-- `tests/pes/` contains pre-trained classical-potential checkpoints (MTP, GAP, NNP, SNAP, ACE, NequIP, DPA3) used by `test_utils.py` to exercise the maml-backed loaders. These are real model files — don't move or rename them without updating the corresponding tests.
+- Readability for chemists: names state the physics, docstrings state units and meaning, settings are
+  explicit keyword arguments with the reference's defaults. Comments, docstrings and docs are in English.
+- Failures of single materials never stop a run: simulators return results with `error`, benchmarks write
+  the reason into `status` and NaN into the quantities.
+- All modules start with `from __future__ import annotations`; ruff runs with `select = ["ALL"]`
+  (see `pyproject.toml` for ignores). Google-style docstrings, type hints everywhere.
+- Tests build tiny datasets from EMT-describable crystals in `tests/helpers.py`/`tests/conftest.py`;
+  anything needing the network is marked `network`.

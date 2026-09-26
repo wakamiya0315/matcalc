@@ -1,86 +1,102 @@
-"""
-This file defines commonly used test fixtures. These are meant to be reused in unit tests.
-- Fixtures that are formulae (e.g., LiFePO4) returns the appropriate pymatgen Structure or Molecule based on the most
-  commonly known structure.
-- Fixtures that are prefixed with `graph_` returns a (structure, graph, state) tuple.
+"""Shared fixtures: tiny benchmark datasets that ASE's EMT potential can handle.
 
-Given that the fixtures are unlikely to be modified by the underlying code, the fixtures are set with a scope of
-"session". In the event that future tests are written that modifies the fixtures, these can be set to the default scope
-of "function".
+EMT (effective medium theory) is fast and deterministic and supports Al, Cu, Ag, Au, Ni, Pd and Pt,
+so the benchmark pipelines can be tested offline on a CPU. The DFT values in these datasets are
+made up; the tests check the machinery, not the physics of EMT.
 """
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
-from pymatgen.util.testing import PymatgenTest
+from ase.build import bulk
+from ase.calculators.emt import EMT
+from monty.serialization import dumpfn
+from pymatgen.io.ase import AseAtomsAdaptor
 
-import matcalc
-from matcalc.utils import PESCalculator, to_ase_atoms
+from matcalc import ASESimulator
+
+from .helpers import FCC_PRIMITIVE, SOFTENING_FACTOR, phonon_entry, structure
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
-
-    from ase.atoms import Atoms
-    from pymatgen.core import Structure
-
-import matgl
-
-matgl.clear_cache(confirm=False)
-matcalc.clear_cache(confirm=False)
+    from pathlib import Path
 
 
-@pytest.fixture(scope="session")
-def LiFePO4() -> Structure:
-    """LiFePO4 structure as session-scoped fixture (don't modify in-place,
-    will affect other tests).
-    """
-    return PymatgenTest.get_structure("LiFePO4")
+@pytest.fixture
+def emt_simulator() -> ASESimulator:
+    return ASESimulator(EMT(), show_progress=False)
 
 
-@pytest.fixture(scope="session")
-def Li2O() -> Structure:
-    """Li2O structure as session-scoped fixture."""
-    return PymatgenTest.get_structure("Li2O")
+@pytest.fixture
+def elasticity_dataset(tmp_path: Path) -> Path:
+    entries = [
+        {
+            "mp_id": "t-Cu",
+            "formula": "Cu",
+            "structure": structure("Cu"),
+            "bulk_modulus_vrh": 140.0,
+            "shear_modulus_vrh": 48.0,
+        },
+        {
+            "mp_id": "t-NiAl",
+            "formula": "NiAl",
+            "structure": structure("NiAl"),
+            "bulk_modulus_vrh": 160.0,
+            "shear_modulus_vrh": 70.0,
+        },
+    ]
+    path = tmp_path / "elasticity.json.gz"
+    dumpfn(entries, path)
+    return path
 
 
-@pytest.fixture(scope="session")
-def Si() -> Structure:
-    """Si structure as session-scoped fixture."""
-    return PymatgenTest.get_structure("Si")
+@pytest.fixture
+def phonon_dataset(tmp_path: Path) -> Path:
+    """fcc Cu (conventional cell, 2 x 2 x 2 supercell) and B2 NiAl (3 x 3 x 3), the latter marked unstable."""
+    entries = [
+        phonon_entry("t-Cu", "Cu", [[2, 0, 0], [0, 2, 0], [0, 0, 2]], FCC_PRIMITIVE, 24.4, stable=True),
+        phonon_entry("t-NiAl", "NiAl", [[3, 0, 0], [0, 3, 0], [0, 0, 3]], None, 45.0, stable=False),
+    ]
+    path = tmp_path / "phonon.json.gz"
+    dumpfn({"entries": entries}, path)
+    return path
 
 
-@pytest.fixture(scope="session")
-def SiO2() -> Structure:
-    """SiO2 structure as session-scoped fixture."""
-    return PymatgenTest.get_structure("SiO2")
+@pytest.fixture
+def equilibrium_dataset(tmp_path: Path) -> Path:
+    entries = [
+        {
+            "material_id": "t-Cu3Au",
+            "formula": "Cu3Au",
+            "structure": structure("Cu3Au"),
+            "formation_energy_per_atom": -0.05,
+        },
+        {
+            "material_id": "t-CuAu",
+            "formula": "CuAu",
+            "structure": structure("CuAu"),
+            "formation_energy_per_atom": -0.06,
+        },
+    ]
+    path = tmp_path / "equilibrium.json.gz"
+    dumpfn(entries, path)
+    return path
 
 
-@pytest.fixture(scope="session")
-def Si_atoms() -> Atoms:
-    """Si atoms as session-scoped fixture."""
-    return to_ase_atoms(PymatgenTest.get_structure("Si"))
-
-
-@pytest.fixture(scope="session")
-def matpes_calculator() -> PESCalculator:
-    """TensorNet calculator as session-scoped fixture."""
-    return matcalc.load_fp("TensorNet-MatPES-PBE-2025.2")
-
-
-@pytest.fixture(autouse=True)
-def setup_teardown() -> Generator:
-    """
-    Fixture method for setting up and tearing down temporary directory environment for testing.
-
-    Returns:
-        Generator: A generator yielding the path of the temporary directory.
-    """
-    initial_files = os.listdir()
-    yield
-    for f in os.listdir():
-        if f not in initial_files:
-            print(f"Deleting generated file: {f}")  # noqa:T201
-            os.remove(f)
+@pytest.fixture
+def softening_dataset(tmp_path: Path) -> Path:
+    rng = np.random.default_rng(0)
+    frames = {}
+    for k in range(3):
+        atoms = bulk("Cu", "fcc", a=3.62, cubic=True).repeat(2)
+        atoms.positions += rng.normal(scale=0.08, size=atoms.positions.shape)
+        atoms.calc = EMT()
+        frames[f"t-Cu-{k}"] = {
+            "structure": AseAtomsAdaptor.get_structure(atoms),
+            "vasp_f": (atoms.get_forces() * SOFTENING_FACTOR).tolist(),
+        }
+    path = tmp_path / "softening.json.gz"
+    dumpfn({"t-Cu": frames}, path)
+    return path
