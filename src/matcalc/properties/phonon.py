@@ -55,11 +55,17 @@ def displaced_supercells(phonon: Phonopy, *, displacement: float = 0.015) -> lis
         One ASE ``Atoms`` per displaced supercell, in phonopy's order.
     """
     phonon.generate_displacements(distance=displacement)
-    return [
-        Atoms(symbols=cell.symbols, cell=cell.cell, scaled_positions=cell.scaled_positions, pbc=True)
-        for cell in phonon.supercells_with_displacements
-        if cell is not None
-    ]
+    # The same cells as phonopy's ``supercells_with_displacements``, built directly from the perfect
+    # supercell: much faster for large supercells.
+    supercell = phonon.supercell
+    cells = []
+    for entry in phonon.dataset["first_atoms"]:
+        if not entry.get("included", True):
+            continue
+        positions = supercell.positions.copy()
+        positions[entry["number"]] += entry["displacement"]
+        cells.append(Atoms(numbers=supercell.numbers, cell=supercell.cell, positions=positions, pbc=True))
+    return cells
 
 
 @dataclass

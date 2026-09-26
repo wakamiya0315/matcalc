@@ -50,6 +50,11 @@ MAX_OUT_OF_MEMORY_RETRIES = 3
 OUT_OF_MEMORY_BACKOFF = 0.8
 """After a batch of single points runs out of GPU memory, the capacity is lowered to this fraction of it."""
 
+MAX_PROBE_ATOMS = 100_000
+"""Largest batch (in atoms) tried when measuring the batch capacity. The GPU is saturated well before; a
+model that needs little memory per atom (float32 with cuEquivariance) would otherwise be probed with
+batches of up to half a million atoms, which takes minutes."""
+
 OUT_OF_MEMORY_MESSAGES = ("out of memory", "Failed to allocate")
 """Parts of the messages of out-of-memory errors: PyTorch's, and those of kernels that allocate GPU memory
 themselves, such as cuEquivariance's ("cudaErrorMemoryAllocation:out of memory")."""
@@ -374,6 +379,7 @@ class TorchSimSimulator:
                     # memory happens a few times per call rather than once per batch.
                     capacity = OUT_OF_MEMORY_BACKOFF * sum(metric[i] for i in batch)
                     self.capacities.append(capacity)
+                    self._remember_lower_capacity(capacity)
                     logger.warning(
                         "GPU out of memory on a batch of %d structures; batch capacity lowered to %.4g",
                         len(batch),
@@ -452,7 +458,9 @@ class TorchSimSimulator:
         capacity is measured on the smallest and the largest structure of a call (TorchSim probes with
         growing copies of each until the GPU runs out of memory and backs off two steps). A later call
         whose structures lie within the range already measured (with the same stress setting) reuses the
-        capacity; a call with new extremes is measured again.
+        capacity (also when its smallest structure is down to half the smallest one measured); a call with
+        a larger structure or much smaller ones is measured again. A capacity lowered after running out
+        of memory is remembered.
 
         The capacity can be smaller than the largest structure: when that structure barely fits on the
         GPU on its own, TorchSim reports room for one copy of it. Single points then evaluate structures
@@ -465,11 +473,15 @@ class TorchSimSimulator:
         else:
             low, high, stress = min(metric), max(metric), self.model.compute_stress
             known = self._measured.get(stress)
-            if known is not None and known[0] <= low and high <= known[1]:
+            if known is not None and known[0] / 2 <= low and high <= known[1]:
                 capacity = known[2]
             else:
                 capacity = estimate_max_memory_scaler(
-                    state, self.model, list(metric), oom_error_message=OUT_OF_MEMORY_MESSAGES
+                    state,
+                    self.model,
+                    list(metric),
+                    max_atoms=MAX_PROBE_ATOMS,
+                    oom_error_message=OUT_OF_MEMORY_MESSAGES,
                 )
                 capacity *= self.memory_padding
                 if known is not None:  # the range now covers both calls: keep the smaller capacity
@@ -478,6 +490,11 @@ class TorchSimSimulator:
         self.capacities.append(capacity)
         logger.info("TorchSim batch capacity: %.4g (%d structures)", capacity, state.n_systems)
         return capacity
+
+    def _remember_lower_capacity(self, capacity: float) -> None:
+        known = self._measured.get(self.model.compute_stress)
+        if known is not None:
+            self._measured[self.model.compute_stress] = (known[0], known[1], min(known[2], capacity))
 
 
 def _pack(indices: Iterable[int], metric: Sequence[float], capacity: float) -> list[list[int]]:
