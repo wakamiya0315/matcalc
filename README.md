@@ -66,8 +66,11 @@ table = matcalc.PhononBenchmark(workers=4).run(simulator, "my-mlip")
 - Single points are packed into batches by size; force-only single points (phonons, softening) skip the
   stress. A structure larger than the batch capacity is evaluated on its own, and one that does not fit
   on the GPU even alone gets no prediction (as with the ASE path).
-- The batch capacity is measured on the GPU (TorchSim's memory probe). When a batch runs out of memory the
-  capacity is lowered for the rest of the call; a relaxation is retried with half the capacity.
+- The batch capacity comes from TorchSim's memory probe on the GPU (how many copies of the smallest and of
+  the largest structure fit). TorchSim would size every batch for copies of the smallest structure, whose
+  memory is mostly a fixed cost that its memory metric ignores; instead the two probes bound the memory of
+  each structure of a call, so that a few tiny cells no longer shrink the batches of all the others. When a
+  batch runs out of memory the capacity is lowered; a relaxation is retried with half the capacity.
 - The CPU work (phonopy, structural fingerprints) runs in `workers` parallel processes.
 
 Agreement with the ASE path and wall times are reported in [docs/validation.md](docs/validation.md).

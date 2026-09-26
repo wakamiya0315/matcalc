@@ -8,6 +8,8 @@ are concatenated into one graph, and batches are sized to fill the GPU memory.
   takes its place. The optimizer is TorchSim's ASE-flavoured FIRE on a Frechet cell filter, the same
   algorithm as ``ASESimulator`` (ASE's FIRE on a ``FrechetCellFilter``).
 - Single points are packed into batches by size.
+- The batch capacity comes from TorchSim's memory probe (how many copies of the smallest and of the largest
+  structure fit on the GPU), turned into an upper bound on the memory of every structure of a call.
 
 TorchSim needs the MLIP as a TorchSim model (``torch_sim.models.interface.ModelInterface``), provided by
 the user.
@@ -16,16 +18,17 @@ the user.
 from __future__ import annotations
 
 import gc
+import itertools
 import logging
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
 import torch_sim as ts
 import torch_sim.math as tsm
-from torch_sim.autobatching import calculate_memory_scalers, estimate_max_memory_scaler, to_constant_volume_bins
+from torch_sim.autobatching import calculate_memory_scalers, determine_max_batch_size, to_constant_volume_bins
 from torch_sim.constraints import FixSymmetry
 from torch_sim.optimizers import fire_init, fire_step
 from tqdm import tqdm
@@ -260,10 +263,10 @@ class TorchSimSimulator:
     Attributes:
         model: TorchSim model of the MLIP.
         max_memory_scaler: Capacity of one batch in TorchSim's memory metric (sum over the batch of
-            number of atoms x number density). ``None`` = measure it on the GPU for every call, on the
-            smallest and the largest structure of that call.
-        memory_padding: Fraction of the measured capacity actually used (TorchSim cannot recover
-            from running out of GPU memory in the middle of a run).
+            number of atoms x number density). ``None`` = derive it for every call from memory probes on
+            the GPU (see ``_capacity``).
+        memory_padding: Fraction of the measured memory actually used (TorchSim cannot recover from
+            running out of GPU memory in the middle of a run).
         capacities: Capacity used by every call so far (for diagnostics).
         steps_between_swaps: FIRE steps between convergence checks. 1 stops each relaxation at the
             same step as ASE; larger values do less bookkeeping.
@@ -301,7 +304,11 @@ class TorchSimSimulator:
             # Batches of varying size fragment PyTorch's CUDA cache (up to a third of the GPU was seen
             # reserved but unusable); expandable segments avoid that.
             torch.cuda.memory._set_allocator_settings("expandable_segments:True")  # noqa: SLF001
-        self._measured: dict[bool, tuple[float, float, float]] = {}  # stress on/off: (min, max metric, capacity)
+        self._measures_memory = model.device.type == "cuda"
+        # Per stress setting (on/off): probes of the smallest and the largest structure measured so far, and
+        # the fraction of the probed memory batches may use (lowered after running out of memory).
+        self._probes: dict[bool, tuple[MemoryProbe, MemoryProbe]] = {}
+        self._budget: dict[bool, float] = {}
 
     def relax(
         self,
@@ -442,7 +449,7 @@ class TorchSimSimulator:
         metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
         results: list[SinglePointResult] = [SinglePointResult.failed("not evaluated")] * state.n_systems
         with _stress_enabled(self.model, enabled=compute_stress):
-            capacity = self._capacity(state, metric)
+            capacity, shares = self._capacity(state, metric)
             batches = _pack(range(state.n_systems), metric, capacity)
             too_large: list[float] = []  # memory metric of structures that did not fit on their own
             progress = tqdm(total=state.n_systems, desc="single point", disable=not self.show_progress)
@@ -460,7 +467,10 @@ class TorchSimSimulator:
                     # memory happens a few times per call rather than once per batch.
                     capacity = OUT_OF_MEMORY_BACKOFF * sum(metric[i] for i in batch)
                     self.capacities.append(capacity)
-                    self._remember_lower_capacity(capacity)
+                    if shares is not None:  # later calls: batches of at most this share of the probed memory
+                        budget = self._budget.get(self.model.compute_stress, self.memory_padding)
+                        lowered = OUT_OF_MEMORY_BACKOFF * float(shares[batch].sum())
+                        self._budget[self.model.compute_stress] = min(budget, lowered)
                     logger.warning(
                         "GPU out of memory on a batch of %d structures; batch capacity lowered to %.4g",
                         len(batch),
@@ -517,7 +527,7 @@ class TorchSimSimulator:
         metric = calculate_memory_scalers(state, memory_scales_with=self.model.memory_scales_with)
         # TorchSim recomputes the metric structure by structure, which can differ in the last digit.
         largest = max(metric) * (1 + 1e-6)
-        capacity = max(self._capacity(state, metric), largest)  # every structure must fit into a batch
+        capacity = max(self._capacity(state, metric)[0], largest)  # every structure must fit into a batch
         last_try_at_smallest = False
         for attempt in range(MAX_OUT_OF_MEMORY_RETRIES + 1):
             try:
@@ -532,50 +542,151 @@ class TorchSimSimulator:
             logger.warning("GPU out of memory; retrying with batch capacity %.4g", capacity)
         raise AssertionError("unreachable")  # pragma: no cover
 
-    def _capacity(self, state: Any, metric: Sequence[float]) -> float:
+    def _capacity(self, state: Any, metric: Sequence[float]) -> tuple[float, np.ndarray | None]:
         """Batch capacity for the structures of one call, in TorchSim's memory metric.
 
-        Memory per unit of the metric differs between many tiny cells and a few large supercells, so the
-        capacity is measured on the smallest and the largest structure of a call (TorchSim probes with
-        growing copies of each until the GPU runs out of memory and backs off two steps). A later call
-        whose structures lie within the range already measured (with the same stress setting) reuses the
-        capacity (also when its smallest structure is down to half the smallest one measured); a call with
-        a larger structure or much smaller ones is measured again. A capacity lowered after running out
-        of memory is remembered.
+        TorchSim measures how many copies of the smallest and of the largest structure (in its memory
+        metric) fit on the GPU, backs off two steps of its search, and uses the smaller of the two
+        capacities. That smaller one is set by the smallest structure, whose memory is mostly a fixed
+        cost per structure and per atom that the metric ignores: a single one-atom cell with a large
+        volume among the Equilibrium benchmark's elemental references cut the batches of all the other
+        structures to a tenth of what fits. Here the same two probes give an upper bound on the memory of
+        every structure of the call instead (``memory_shares``), and the capacity is the largest metric
+        sum that no batch drawn from these structures can exceed the memory with (``batch_capacity``).
 
-        The capacity can be smaller than the largest structure: when that structure barely fits on the
-        GPU on its own, TorchSim reports room for one copy of it. Single points then evaluate structures
-        larger than the capacity one at a time; relaxations raise the capacity to the largest structure.
+        The probes are cached per stress setting and measured again when a call has a structure larger
+        than the largest one probed or smaller than half the smallest one. After running out of memory,
+        later calls use batches of a smaller share of the probed memory.
+
+        Returns:
+            The capacity, and the memory share of every structure (``None`` if the capacity is not
+            derived from probes).
         """
+        shares = None
         if self.max_memory_scaler is not None:
             capacity = self.max_memory_scaler
-        elif self.model.device.type != "cuda":
+        elif not self._measures_memory:
             capacity = float(sum(metric)) * (1 + 1e-6) + 1.0  # no GPU memory to measure: one batch
         else:
-            low, high, stress = min(metric), max(metric), self.model.compute_stress
-            known = self._measured.get(stress)
-            if known is not None and known[0] / 2 <= low and high <= known[1]:
-                capacity = known[2]
-            else:
-                capacity = estimate_max_memory_scaler(
-                    state,
-                    self.model,
-                    list(metric),
-                    max_atoms=MAX_PROBE_ATOMS,
-                    oom_error_message=OUT_OF_MEMORY_MESSAGES,
-                )
-                capacity *= self.memory_padding
-                if known is not None:  # the range now covers both calls: keep the smaller capacity
-                    low, high, capacity = min(low, known[0]), max(high, known[1]), min(capacity, known[2])
-                self._measured[stress] = (low, high, capacity)
+            metric = np.asarray(metric, dtype=float)
+            n_atoms = state.n_atoms_per_system.detach().cpu().numpy().astype(float)
+            shares = memory_shares(self._memory_probes(state, metric), n_atoms, metric)
+            budget = self._budget.get(self.model.compute_stress, self.memory_padding)
+            capacity = batch_capacity(shares, metric, budget)
         self.capacities.append(capacity)
         logger.info("TorchSim batch capacity: %.4g (%d structures)", capacity, state.n_systems)
-        return capacity
+        return capacity, shares
 
-    def _remember_lower_capacity(self, capacity: float) -> None:
-        known = self._measured.get(self.model.compute_stress)
-        if known is not None:
-            self._measured[self.model.compute_stress] = (known[0], known[1], min(known[2], capacity))
+    def _memory_probes(self, state: Any, metric: np.ndarray) -> tuple[MemoryProbe, MemoryProbe]:
+        """Probes of the smallest and the largest structure, from the cache or measured now."""
+        stress = self.model.compute_stress
+        cached = self._probes.get(stress)
+        probed: dict[int, MemoryProbe] = {}
+
+        def probe(index: int) -> MemoryProbe:
+            if index not in probed:  # one structure can be both the smallest and the largest
+                probed[index] = self._probe(state, index, metric)
+            return probed[index]
+
+        smallest, largest = int(np.argmin(metric)), int(np.argmax(metric))
+        small = cached[0] if cached is not None and metric[smallest] >= cached[0].metric / 2 else probe(smallest)
+        large = cached[1] if cached is not None and metric[largest] <= cached[1].metric else probe(largest)
+        self._probes[stress] = (small, large)
+        return small, large
+
+    def _probe(self, state: Any, index: int, metric: np.ndarray) -> MemoryProbe:
+        """How many copies of one structure fit on the GPU (TorchSim's search, which backs off two steps)."""
+        copies = determine_max_batch_size(
+            state[index], self.model, max_atoms=MAX_PROBE_ATOMS, oom_error_message=OUT_OF_MEMORY_MESSAGES
+        )
+        return MemoryProbe(n_atoms=int(state.n_atoms_per_system[index]), metric=float(metric[index]), copies=copies)
+
+
+@dataclass(frozen=True)
+class MemoryProbe:
+    """Result of TorchSim's memory probe for one structure: ``copies`` copies of it fit into one batch.
+
+    Attributes:
+        n_atoms: Number of atoms of the structure.
+        metric: Its value of the memory metric.
+        copies: Number of copies that fit on the GPU, with TorchSim's safety margin.
+    """
+
+    n_atoms: int
+    metric: float
+    copies: int
+
+
+def memory_shares(probes: tuple[MemoryProbe, MemoryProbe], n_atoms: np.ndarray, metric: np.ndarray) -> np.ndarray:
+    """Upper bound on the share of the probed GPU memory that each structure needs in a batch.
+
+    One copy of a probed structure needs ``1 / copies`` of the memory. The memory of a structure is taken to
+    grow linearly, with non-negative costs, with three counts: structures (1), atoms and memory metric
+    (for most MLIPs: node features per atom, messages per neighbour pair). A structure then needs no more
+    than ``x`` copies of the small probe and ``y`` of the large one whenever that combination is at least
+    as large in all three counts::
+
+        x + y >= 1,    x n_small + y n_large >= n,    x m_small + y m_large >= m,    x, y >= 0
+
+    and the bound is the smallest ``x / copies_small + y / copies_large`` over these combinations (a
+    linear program in two variables, solved at the corners of its feasible region).
+
+    Args:
+        probes: Probes of a small and a large structure (may be the same).
+        n_atoms: Number of atoms of every structure.
+        metric: Memory metric of every structure.
+
+    Returns:
+        The share of every structure.
+    """
+    small, large = probes
+    constraints = [
+        (1.0, 1.0, np.ones_like(metric)),
+        (float(small.n_atoms), float(large.n_atoms), n_atoms),
+        (small.metric, large.metric, metric),
+    ]  # each: coefficient of x, of y, and the count of the structure
+    cost_x, cost_y = 1.0 / small.copies, 1.0 / large.copies
+    corners = [
+        cost_x * np.max([count / a for a, _, count in constraints], axis=0),  # only the small probe (y = 0)
+        cost_y * np.max([count / b for _, b, count in constraints], axis=0),  # only the large probe (x = 0)
+    ]
+    for (a1, b1, c1), (a2, b2, c2) in itertools.combinations(constraints, 2):  # two constraints tight
+        det = a1 * b2 - a2 * b1
+        if abs(det) <= 1e-12 * max(abs(a1 * b2), abs(a2 * b1)):  # parallel: no corner
+            continue
+        x = (c1 * b2 - c2 * b1) / det
+        y = (a1 * c2 - a2 * c1) / det
+        feasible = (x >= 0) & (y >= 0)
+        for a, b, count in constraints:
+            feasible &= a * x + b * y >= count * (1 - 1e-9)
+        corners.append(np.where(feasible, cost_x * x + cost_y * y, np.inf))
+    return np.min(corners, axis=0)
+
+
+def batch_capacity(shares: np.ndarray, metric: np.ndarray, budget: float) -> float:
+    """Largest metric sum below which every batch of these structures stays within a memory budget.
+
+    Batches are limited by the sum of their memory metric; the worst batch for a given sum is made of the
+    structures with the largest memory share per unit of metric. Taking them in that order (with a
+    fraction of the last one) until the shares reach the budget gives the capacity: no set of these
+    structures with a smaller metric sum has larger shares.
+
+    Args:
+        shares: Memory share of every structure (from ``memory_shares``).
+        metric: Memory metric of every structure.
+        budget: Share of the probed memory a batch may use.
+
+    Returns:
+        The capacity in units of the metric; the metric sum of all structures (plus rounding) if they all
+        fit into one batch.
+    """
+    order = np.argsort(-(shares / metric), kind="stable")
+    filled = np.cumsum(shares[order])
+    if filled[-1] <= budget:
+        return float(metric.sum()) * (1 + 1e-6)  # TorchSim recomputes the metric, to the last digit
+    k = int(np.searchsorted(filled, budget, side="right"))  # the first structure that no longer fits whole
+    before = float(filled[k - 1]) if k else 0.0
+    return float(metric[order[:k]].sum()) + (budget - before) / float(shares[order[k]]) * float(metric[order[k]])
 
 
 def _refined(structure: Structure | Atoms, symprec: float) -> Atoms:

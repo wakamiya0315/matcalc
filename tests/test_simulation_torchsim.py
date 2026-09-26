@@ -24,7 +24,7 @@ from torch_sim.autobatching import calculate_memory_scalers  # noqa: E402
 from torch_sim.models.lennard_jones import LennardJonesModel  # noqa: E402
 
 from matcalc.simulation import as_simulator  # noqa: E402
-from matcalc.simulation.torchsim import TorchSimSimulator  # noqa: E402
+from matcalc.simulation.torchsim import MemoryProbe, TorchSimSimulator, batch_capacity, memory_shares  # noqa: E402
 from matcalc.structures import to_ase_atoms  # noqa: E402
 
 
@@ -242,6 +242,95 @@ def test_structures_that_do_not_fit_alone_fail_without_stopping_the_others() -> 
     assert len(alone.batches) == len(cells) - 1
     assert np.isfinite(results[2].energy)
     assert np.isfinite(results[4].energy)
+
+
+def random_structures(rng: np.random.Generator, n: int) -> tuple[np.ndarray, np.ndarray]:
+    """Numbers of atoms and memory metrics (atoms x density) of made-up structures."""
+    n_atoms = rng.integers(1, 200, n).astype(float)
+    density = rng.uniform(1.0, 150.0, n)  # atoms/nm^3, from sparse cells to diamond
+    return n_atoms, n_atoms * density
+
+
+def test_memory_shares_are_the_smallest_bounds_of_the_linear_program() -> None:
+    from scipy.optimize import linprog
+
+    rng = np.random.default_rng(0)
+    for _ in range(20):
+        (n1, n2), (m1, m2) = random_structures(rng, 2)
+        probes = (
+            MemoryProbe(int(n1), m1, int(rng.integers(1, 5000))),
+            MemoryProbe(int(n2), m2, int(rng.integers(1, 5000))),
+        )
+        n_atoms, metric = random_structures(rng, 30)
+        shares = memory_shares(probes, n_atoms, metric)
+        for n, m, share in zip(n_atoms, metric, shares, strict=True):
+            costs = [1 / probes[0].copies, 1 / probes[1].copies]
+            at_least = -np.array(
+                [[1.0, 1.0], [probes[0].n_atoms, probes[1].n_atoms], [probes[0].metric, probes[1].metric]]
+            )
+            solution = linprog(costs, A_ub=at_least, b_ub=-np.array([1.0, n, m]), bounds=[(0, None)] * 2)
+            assert share == pytest.approx(solution.fun, rel=1e-7)
+
+
+def test_capacity_for_copies_of_the_probed_structure_is_torchsims() -> None:
+    probe = MemoryProbe(n_atoms=12, metric=720.0, copies=150)
+    shares = memory_shares((probe, probe), np.full(1000, 12.0), np.full(1000, 720.0))
+    assert_allclose(shares, 1 / 150)
+    assert batch_capacity(shares, np.full(1000, 720.0), 0.9) == pytest.approx(0.9 * 150 * 720.0)
+
+
+def test_no_batch_within_the_capacity_exceeds_the_memory_budget() -> None:
+    rng = np.random.default_rng(1)
+    n_atoms, metric = random_structures(rng, 400)
+    small, large = int(np.argmin(metric)), int(np.argmax(metric))
+    probes = (
+        MemoryProbe(int(n_atoms[small]), metric[small], 3000),
+        MemoryProbe(int(n_atoms[large]), metric[large], 20),
+    )
+    shares = memory_shares(probes, n_atoms, metric)
+    capacity = batch_capacity(shares, metric, 0.9)
+    worst = np.argsort(-shares / metric)  # the structures with the most memory per unit of metric first
+    in_batch = np.cumsum(metric[worst]) <= capacity
+    assert shares[worst][in_batch].sum() <= 0.9
+    for _ in range(200):
+        batch = rng.permutation(len(metric))
+        batch = batch[np.cumsum(metric[batch]) <= capacity]
+        assert shares[batch].sum() <= 0.9
+    assert batch_capacity(shares, metric, 1e9) == pytest.approx(metric.sum(), rel=1e-5)  # all in one batch
+
+
+def test_a_few_small_sparse_structures_do_not_cut_the_capacity() -> None:
+    """One one-atom cell of 600 A^3 among dense cells: TorchSim's rule would size batches for copies of it."""
+    n_atoms = np.array([1.0, *[12.0] * 500, 240.0])
+    metric = np.array([1.66, *[720.0] * 500, 24000.0])
+    probes = (MemoryProbe(1, 1.66, 5939), MemoryProbe(240, 24000.0, 8))
+    capacity = batch_capacity(memory_shares(probes, n_atoms, metric), metric, 0.9)
+    torchsims = 0.9 * min(5939 * 1.66, 8 * 24000.0)
+    assert capacity > 10 * torchsims
+
+
+def test_capacity_probes_are_cached_and_lowered_after_running_out_of_memory() -> None:
+    model = lj_model()
+    probed: list[int] = []
+
+    def fake_probe(state: Any, index: int, metric: np.ndarray) -> MemoryProbe:
+        probed.append(int(state.n_atoms_per_system[index]))
+        return MemoryProbe(int(state.n_atoms_per_system[index]), float(metric[index]), 10)
+
+    simulator = TorchSimSimulator(_OutOfMemoryModel(model, max_structures=2), show_progress=False)
+    simulator._measures_memory = True  # as on a GPU, with the probe replaced
+    simulator._probe = fake_probe  # type: ignore[method-assign]
+    cells = [rattled("Cu", seed) for seed in range(6)] + [structure("Cu1")]  # 4-atom cells and a 1-atom cell
+    results = simulator.single_point(cells)
+    assert all(r.error is None for r in results)
+    assert sorted(probed) == [1, 4]
+    budget = simulator._budget[True]
+    assert budget < simulator.memory_padding  # batches of more than two structures ran out of memory
+    simulator.single_point(cells[:3])  # within the range probed: nothing measured again
+    assert sorted(probed) == [1, 4]
+    simulator.single_point([structure("Cu3Au"), structure("Cu").make_supercell([2, 1, 1], in_place=False)])
+    assert sorted(probed) == [1, 4, 8]  # a larger structure: only that one is probed
+    assert simulator._budget[True] == budget
 
 
 def symmetric_starts() -> list[Any]:
