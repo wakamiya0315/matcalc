@@ -12,8 +12,10 @@ from __future__ import annotations
 import bz2
 import json
 import re
+import multiprocessing
 import sys
-from multiprocessing import Pool
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 
@@ -33,17 +35,20 @@ def dft_forces(path: str) -> list[np.ndarray]:
     return forces
 
 
-def check(args: tuple) -> dict:
-    directory, material = args
+def check(directory: str, material: object) -> dict:
     forces = dft_forces(f"{directory}/pbe/{material.material_id}.yaml.bz2")
     job = PhononJob(material.structure, forces, **material.settings, temperature=300.0, mesh=(20, 20, 20))
     harmonic = harmonic_properties_of(job)
-    return {
+    row = {
         "mp_id": material.material_id,
-        "CV": harmonic.heat_capacity,
         "CV_DFT": material.reference["CV"],
-        "stable": harmonic.dynamically_stable,
         "stable_DFT": material.reference["stable"],
+    }
+    if isinstance(harmonic, str):
+        return row | {"error": harmonic}
+    return row | {
+        "CV": harmonic.heat_capacity,
+        "stable": harmonic.dynamically_stable,
         "min_frequency": harmonic.min_frequency,
     }
 
@@ -51,14 +56,22 @@ def check(args: tuple) -> dict:
 def main() -> None:
     directory, workers, output = sys.argv[1], int(sys.argv[2]), sys.argv[3]
     materials = PhononBenchmark().materials
-    with Pool(workers) as pool:
-        rows = pool.map(check, [(directory, m) for m in materials], chunksize=4)
+    rows, start = [], time.perf_counter()
+    # A pool of spawned processes reports a crashed worker instead of waiting for it forever.
+    with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn")) as pool:
+        futures = [pool.submit(check, directory, m) for m in materials]
+        for n, future in enumerate(as_completed(futures), 1):
+            rows.append(future.result())
+            if n % 100 == 0:
+                print(f"{n} compounds after {time.perf_counter() - start:.0f} s", flush=True)
     json.dump(rows, open(output, "w"))
-    d = np.array([abs(r["CV"] - r["CV_DFT"]) for r in rows])
+    ok = [r for r in rows if "error" not in r]
+    d = np.array([abs(r["CV"] - r["CV_DFT"]) for r in ok])
     print(
-        f"{len(rows)} compounds: |CV - CV_DFT| median {np.median(d):.2e}, p99 {np.percentile(d, 99):.2e}, max {d.max():.2e}"
+        f"{len(ok)} of {len(rows)} compounds: |CV - CV_DFT| median {np.median(d):.2e}, p99 {np.percentile(d, 99):.2e}, max {d.max():.2e}"
     )
-    flips = [r for r in rows if r["stable"] != r["stable_DFT"]]
+    print("errors:", [(r["mp_id"], r["error"]) for r in rows if "error" in r][:10])
+    flips = [r for r in ok if r["stable"] != r["stable_DFT"]]
     print(
         f"stability flag differs for {len(flips)}:",
         [(r["mp_id"], round(r["min_frequency"], 3), r["stable_DFT"]) for r in flips[:10]],
