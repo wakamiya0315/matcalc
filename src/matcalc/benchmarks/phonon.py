@@ -152,17 +152,16 @@ class PhononBenchmark(Benchmark):
                 symprec=self.symprec,
             )
 
-        jobs: list[PhononJob | None] = [
-            PhononJob(result.structure, [], **material.settings, temperature=self.temperature, mesh=self.mesh)
+        jobs = {
+            i: PhononJob(result.structure, [], **material.settings, temperature=self.temperature, mesh=self.mesh)
+            for i, (material, result) in enumerate(zip(materials, relaxed, strict=True))
             if result.optimizer_converged
-            else None
-            for material, result in zip(materials, relaxed, strict=True)
-        ]
+        }
         predictions: list[dict[str, Any]] = [
-            {} if job is not None else failed(result.error or "relaxation not converged", QUANTITIES)
-            for job, result in zip(jobs, relaxed, strict=True)
+            {} if i in jobs else failed(result.error or "relaxation not converged", QUANTITIES)
+            for i, result in enumerate(relaxed)
         ]
-        todo = [i for i, job in enumerate(jobs) if job is not None]
+        todo = list(jobs)
         with worker_pool(self.workers) as pool:
             # Setting up phonopy (symmetry of the supercell) needs only the CPU.
             with self.stage("displacements"):
