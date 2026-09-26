@@ -3,6 +3,7 @@
 - ``ASESimulator``: any ASE calculator, one structure at a time (the reference implementation).
 - ``TorchSimSimulator``: a TorchSim model, many structures per GPU forward pass (needs
   ``torch-sim-atomistic``; imported on first use).
+- ``SplitSimulator``: relaxations with one simulator, single points with another.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from ase.calculators.calculator import Calculator
 
 from .ase import ASESimulator
 from .base import RelaxResult, Simulator, SinglePointResult
+from .split import SplitSimulator
 
 
 def as_simulator(model: Any) -> Simulator:
@@ -63,4 +65,12 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ["ASESimulator", "RelaxResult", "Simulator", "SinglePointResult", "TorchSimSimulator", "as_simulator"]
+__all__ = [
+    "ASESimulator",
+    "RelaxResult",
+    "Simulator",
+    "SinglePointResult",
+    "SplitSimulator",
+    "TorchSimSimulator",
+    "as_simulator",
+]

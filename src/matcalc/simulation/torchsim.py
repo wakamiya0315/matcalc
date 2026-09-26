@@ -354,9 +354,16 @@ class TorchSimSimulator:
         with _stress_enabled(self.model, enabled=compute_stress):
             capacity = self._capacity(state, metric)
             batches = _pack(range(state.n_systems), metric, capacity)
+            too_large: list[float] = []  # memory metric of structures that did not fit on their own
             progress = tqdm(total=state.n_systems, desc="single point", disable=not self.show_progress)
             while batches:
                 batch = batches.pop(0)
+                if len(batch) == 1 and any(np.isclose(metric[batch[0]], m, rtol=1e-9, atol=0) for m in too_large):
+                    # Same number of atoms in the same volume (e.g. another displaced supercell of the same
+                    # compound) as a structure that did not fit: not tried again.
+                    results[batch[0]] = SinglePointResult.failed("GPU out of memory")
+                    progress.update(1)
+                    continue
                 evaluated = self._evaluate(state[batch], compute_stress=compute_stress)
                 if evaluated is None and len(batch) > 1:
                     # Lower the capacity below this batch for the rest of the call, so that running out of
@@ -372,6 +379,7 @@ class TorchSimSimulator:
                     continue
                 if evaluated is None:
                     logger.warning("A structure with %d atoms does not fit on the GPU", len(structures[batch[0]]))
+                    too_large.append(float(metric[batch[0]]))
                     evaluated = [SinglePointResult.failed("GPU out of memory")]
                 for index, result in zip(batch, evaluated, strict=True):
                     results[index] = result

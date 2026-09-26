@@ -41,6 +41,8 @@ def load_mace(
             displacements (phonons) and small strains (elasticity) need it.
         cueq: Use NVIDIA cuEquivariance kernels for the tensor products (needs the
             ``cuequivariance-torch`` and ``cuequivariance-ops-torch-cu12`` packages and a CUDA GPU).
+            With float32 they compute the forces on phonon supercells 10-20x faster than the default
+            kernels; with float64 they are slower (docs/validation.md).
 
     Returns:
         The MACE ASE calculator, or the MACE TorchSim model.

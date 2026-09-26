@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from .benchmarks import BENCHMARKS
 from .models import load_mace
-from .simulation import ASESimulator
+from .simulation import ASESimulator, SplitSimulator
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -49,6 +49,12 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--max-memory-scaler", type=float, default=None, help="TorchSim batch capacity (default: measured on the GPU)"
     )
     parser.add_argument("--cueq", action="store_true", help="use cuEquivariance kernels for MACE's tensor products")
+    parser.add_argument(
+        "--fast-single-points",
+        action="store_true",
+        help="torchsim only: single points in float32 with cuEquivariance kernels; relaxations keep --dtype",
+    )
+    parser.add_argument("--min-supercell-length", type=float, default=None, help="phonon: minimum supercell length (Å)")
     parser.add_argument("--n-samples", type=int, default=None, help="random subset size (default: all)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--chunk-size", type=int, default=None, help="materials per checkpoint")
@@ -59,7 +65,10 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         help="processes for phonopy and fingerprints (default: available CPU cores, at most 8)",
     )
     parser.add_argument("--out", type=Path, default=Path("results"), help="output directory")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.fast_single_points and args.backend != "torchsim":
+        parser.error("--fast-single-points needs --backend torchsim")
+    return args
 
 
 def _versions() -> dict[str, str]:
@@ -89,6 +98,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         from .simulation.torchsim import TorchSimSimulator
 
         simulator: Any = TorchSimSimulator(model, max_memory_scaler=args.max_memory_scaler)
+        if args.fast_single_points:
+            fast = load_mace(args.model, backend="torchsim", device=args.device, dtype="float32", cueq=True)
+            simulator = SplitSimulator(simulator, TorchSimSimulator(fast, max_memory_scaler=args.max_memory_scaler))
     else:
         simulator = ASESimulator(model)
 
@@ -97,6 +109,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         "label": label,
         "dtype": args.dtype,
         "cueq": args.cueq,
+        "fast_single_points": args.fast_single_points,
+        "min_supercell_length": args.min_supercell_length,
         "simulator": args.backend,
         "n_samples": args.n_samples,
         "seed": args.seed,
@@ -104,7 +118,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         "benchmarks": {},
     }
     for name in args.benchmark:
-        benchmark = BENCHMARKS[name](n_samples=args.n_samples, seed=args.seed, workers=args.workers)
+        options = {}
+        if name == "phonon" and args.min_supercell_length is not None:
+            options["min_supercell_length"] = args.min_supercell_length
+        benchmark = BENCHMARKS[name](n_samples=args.n_samples, seed=args.seed, workers=args.workers, **options)
         start = time.perf_counter()
         table = benchmark.run(
             simulator, label, checkpoint_file=args.out / f"{name}_{label}.json.gz", chunk_size=args.chunk_size

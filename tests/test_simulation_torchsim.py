@@ -23,7 +23,7 @@ torch = pytest.importorskip("torch")
 from torch_sim.autobatching import calculate_memory_scalers  # noqa: E402
 from torch_sim.models.lennard_jones import LennardJonesModel  # noqa: E402
 
-from matcalc.simulation import as_simulator  # noqa: E402
+from matcalc.simulation import SplitSimulator, as_simulator  # noqa: E402
 from matcalc.simulation.torchsim import TorchSimSimulator  # noqa: E402
 from matcalc.structures import to_ase_atoms  # noqa: E402
 
@@ -231,7 +231,24 @@ def test_single_point_evaluates_structures_larger_than_the_capacity_alone() -> N
 
 def test_structures_that_do_not_fit_alone_fail_without_stopping_the_others() -> None:
     cells = [*starting_structures(), structure("Cu1")]  # 4, 4, 2, 4 and 1 atoms
-    results = TorchSimSimulator(_OutOfMemoryModel(lj_model(), max_atoms=2), show_progress=False).single_point(cells)
+    small = _OutOfMemoryModel(lj_model(), max_atoms=2)
+    results = TorchSimSimulator(small, show_progress=False).single_point(cells)
     assert [r.error for r in results] == ["GPU out of memory", "GPU out of memory", None, "GPU out of memory", None]
+    # The two rattled fcc Cu cells have the same size: after the first failed, the second is not tried.
+    assert sum(n == 1 for n in small.batches) == len(cells) - 1
     assert np.isfinite(results[2].energy)
     assert np.isfinite(results[4].energy)
+
+
+def test_split_simulator_relaxes_with_one_and_evaluates_with_the_other() -> None:
+    relaxer = TorchSimSimulator(lj_model(), show_progress=False)
+    evaluator = TorchSimSimulator(_OutOfMemoryModel(lj_model()), show_progress=False)
+    split = SplitSimulator(relaxer, evaluator)
+    assert split.batched
+    relaxed = split.relax(starting_structures()[:2], fmax=0.05, max_steps=50)
+    assert [r.energy for r in relaxed] == [
+        r.energy for r in relaxer.relax(starting_structures()[:2], fmax=0.05, max_steps=50)
+    ]
+    assert evaluator.model.batches == []  # relaxations did not touch the evaluator
+    split.single_point(starting_structures())
+    assert evaluator.model.batches

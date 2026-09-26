@@ -19,6 +19,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--min-supercell-length", type=float, default=None, help="phonon only (A)")
     parser.add_argument("--cueq", action="store_true")
+    parser.add_argument("--fast-single-points", action="store_true", help="float32 + cuEquivariance single points")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -56,6 +57,12 @@ def main() -> None:
         model = matcalc.load_mace("MACE-MatPES-PBE-0", backend=backend, dtype=args.dtype, cueq=args.cueq)
         simulator = (TorchSimSimulator(model, show_progress=False) if backend == "torchsim"
                      else matcalc.ASESimulator(model, show_progress=False))
+        if args.fast_single_points:
+            from matcalc.simulation import SplitSimulator
+
+            fast = matcalc.load_mace("MACE-MatPES-PBE-0", backend="torchsim", dtype="float32", cueq=True)
+            evaluator = TorchSimSimulator(fast, show_progress=False)
+            simulator = SplitSimulator(simulator, evaluator)
         options = {} if args.min_supercell_length is None else {"min_supercell_length": args.min_supercell_length}
         bench = matcalc.BENCHMARKS[args.benchmark](
             n_samples=args.n_samples, seed=args.seed, workers=args.workers, **options
@@ -63,12 +70,15 @@ def main() -> None:
         loaded = time.perf_counter()
         table = bench.run(simulator, "mace", checkpoint_file=args.checkpoint)
         extra = {"stage_times_s": {k: round(v, 1) for k, v in bench.timings.items()}}
-        if backend == "torchsim":
+        if args.fast_single_points:
+            extra["capacities"] = [round(c) for c in simulator.relaxer.capacities + simulator.evaluator.capacities]
+        elif backend == "torchsim":
             extra["capacities"] = [round(c) for c in simulator.capacities]
     end = time.perf_counter()
     table = table[[c for c in table.columns if not c.startswith("structure_")]]
     table.to_csv(args.out, index=False)
     info = {"code": args.code, "dtype": args.dtype, "workers": args.workers, "cueq": args.cueq,
+            "fast_single_points": args.fast_single_points,
             "min_supercell_length": args.min_supercell_length,
             "benchmark": args.benchmark, "n": len(table), "setup_s": round(loaded - start, 1),
             "run_s": round(end - loaded, 1), "gpu": torch.cuda.get_device_name(0),
