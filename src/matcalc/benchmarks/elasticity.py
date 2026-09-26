@@ -14,19 +14,27 @@ Recipe (settings as in upstream matcalc):
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from matcalc.properties.elasticity import NORMAL_STRAINS, SHEAR_STRAINS, fit_elastic_tensor, strained_structures
+from matcalc.properties.elasticity import (
+    NORMAL_STRAINS,
+    SHEAR_STRAINS,
+    ElasticFit,
+    fit_elastic_tensor,
+    strain_states,
+    strained_structures,
+)
 
-from ._common import OK, Benchmark, Material, failed
+from ._common import OK, Benchmark, Material, failed, pool_map, split_into_parts, worker_pool
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from pymatgen.core.elasticity import Strain
+    import numpy as np
 
-    from matcalc.simulation import RelaxResult, Simulator, SinglePointResult
+    from matcalc.simulation import RelaxResult, Simulator
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +81,7 @@ class ElasticityBenchmark(Benchmark):
             max_steps: Maximum number of FIRE steps.
             normal_strains: Strains along xx, yy, zz.
             shear_strains: Strains along yz, xz, xy.
-            workers: Accepted for a uniform interface; the fits are too cheap to parallelize.
+            workers: Processes for the stress-strain fits, which run next to the GPU (see ``Benchmark``).
         """
         super().__init__(dataset, n_samples=n_samples, seed=seed, workers=workers)
         self.fmax = fmax
@@ -114,33 +122,81 @@ class ElasticityBenchmark(Benchmark):
         with self.stage("relax"):
             relaxed = simulator.relax([m.structure for m in materials], fmax=self.fmax, max_steps=self.max_steps)
 
+        predictions: list[dict[str, Any]] = [{} for _ in materials]
         with self.stage("strain"):
-            strained = [
-                strained_structures(result.structure, self.normal_strains, self.shear_strains)
-                if result.converged and result.structure is not None
-                else None
-                for result in relaxed
-            ]
+            # Per compound: the strained cells, then the relaxed cell (whose stress is the zero-strain point).
+            cells = {}
+            for i, result in enumerate(relaxed):
+                if result.converged and result.structure is not None:
+                    strained, _ = strained_structures(result.structure, self.normal_strains, self.shear_strains)
+                    cells[i] = [*strained, result.structure]
+                else:
+                    predictions[i] = _relaxation_failure(result)
+        todo = sorted(cells)
+        # The stresses are computed part by part; the fits of a part (CPU only) run in the worker
+        # processes while the GPU computes the next part.
+        with worker_pool(self.workers) as pool:
+            pending = []
+            for part in split_into_parts(todo, [sum(len(c) for c in cells[i]) for i in todo]):
+                with self.stage("single points"):
+                    stresses = iter(simulator.single_point([c for i in part for c in cells[i]]))
+                jobs = []
+                for i in part:
+                    own = [next(stresses) for _ in cells[i]]
+                    errors = [r.error for r in own if r.error is not None]
+                    if errors:
+                        predictions[i] = failed(f"single point failed: {errors[0]}", QUANTITIES)
+                    else:
+                        stress = [r.stress for r in own]
+                        jobs.append((i, FitJob(self.normal_strains, self.shear_strains, stress[:-1], stress[-1])))
+                with self.stage("fit"):  # only the time the GPU waits for the CPU
+                    pending.append(([i for i, _ in jobs], pool_map(pool, moduli_of, [job for _, job in jobs])))
+            with self.stage("fit"):
+                for indices, fits in pending:
+                    for i, fit in zip(indices, fits, strict=True):
+                        if fit.mean_r2 < MIN_MEAN_R2:
+                            logger.warning(
+                                "%s: stress-strain fits have mean R^2 = %.4f < %.2f; the elastic tensor may be "
+                                "unreliable",
+                                materials[i].material_id,
+                                fit.mean_r2,
+                                MIN_MEAN_R2,
+                            )
+                        predictions[i] = {"K_vrh": fit.bulk_modulus_vrh, "G_vrh": fit.shear_modulus_vrh, "status": OK}
+        return [
+            prediction | {"relax_steps": result.n_steps}
+            for prediction, result in zip(predictions, relaxed, strict=True)
+        ]
 
-        # The stresses of all compounds are computed in one call: first the strained cells of a
-        # compound, then its relaxed cell.
-        cells = []
-        for result, deformed in zip(relaxed, strained, strict=True):
-            if deformed is not None:
-                cells.extend([*deformed[0], result.structure])
-        with self.stage("single points"):
-            stresses = iter(simulator.single_point(cells))
 
-        predictions = []
-        with self.stage("fit"):
-            for material, result, deformed in zip(materials, relaxed, strained, strict=True):
-                if deformed is None:
-                    predictions.append(_relaxation_failure(result))
-                    continue
-                strains = deformed[1]
-                own = [next(stresses) for _ in range(len(strains) + 1)]
-                predictions.append(_moduli(material, strains, own[:-1], own[-1]) | {"relax_steps": result.n_steps})
-        return predictions
+@dataclass
+class FitJob:
+    """Stress-strain data of one compound, passed to a worker process.
+
+    Attributes:
+        normal_strains: Strains along xx, yy, zz.
+        shear_strains: Strains along yz, xz, xy.
+        stresses: Stress of every strained cell (3x3, eV/Å^3), in the order of ``strain_states``.
+        equilibrium_stress: Stress of the relaxed cell (eV/Å^3).
+    """
+
+    normal_strains: tuple[float, ...]
+    shear_strains: tuple[float, ...]
+    stresses: list[np.ndarray]
+    equilibrium_stress: np.ndarray
+
+
+def moduli_of(job: FitJob) -> ElasticFit:
+    """Fit the elastic tensor of one compound.
+
+    Args:
+        job: Its stress-strain data.
+
+    Returns:
+        The fit (moduli in GPa).
+    """
+    _, strains = strain_states(job.normal_strains, job.shear_strains)
+    return fit_elastic_tensor(strains, job.stresses, job.equilibrium_stress)
 
 
 def _relaxation_failure(result: RelaxResult) -> dict[str, Any]:
@@ -148,24 +204,4 @@ def _relaxation_failure(result: RelaxResult) -> dict[str, Any]:
         reason = result.error or "relaxation failed"
     else:
         reason = f"relaxation not converged (max force {result.max_force:.3g} eV/A after {result.n_steps} steps)"
-    return failed(reason, QUANTITIES) | {"relax_steps": result.n_steps}
-
-
-def _moduli(
-    material: Material,
-    strains: Sequence[Strain],
-    strained: Sequence[SinglePointResult],
-    relaxed: SinglePointResult,
-) -> dict[str, Any]:
-    errors = [r.error for r in (*strained, relaxed) if r.error is not None]
-    if errors:
-        return failed(f"single point failed: {errors[0]}", QUANTITIES)
-    fit = fit_elastic_tensor(strains, [r.stress for r in strained], relaxed.stress)
-    if fit.mean_r2 < MIN_MEAN_R2:
-        logger.warning(
-            "%s: stress-strain fits have mean R^2 = %.4f < %.2f; the elastic tensor may be unreliable",
-            material.material_id,
-            fit.mean_r2,
-            MIN_MEAN_R2,
-        )
-    return {"K_vrh": fit.bulk_modulus_vrh, "G_vrh": fit.shear_modulus_vrh, "status": OK}
+    return failed(reason, QUANTITIES)

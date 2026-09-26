@@ -52,8 +52,10 @@ benchmark with MACE.
   `converged_before_relaxing` exist for that and are checked by `tests/test_simulation_torchsim.py` (same
   energies and step counts as ASE, with and without the symmetry constraint). The batch capacity is
   measured on the GPU and cached; after running out of memory the capacity is lowered.
-- CPU post-processing (phonopy, fingerprints) runs through `parallel_map` (spawn processes); scripts that
-  use `workers > 1` need an `if __name__ == "__main__":` guard.
+- CPU post-processing (phonopy, stress-strain fits, fingerprints) runs in a `worker_pool` of spawned
+  processes (`pool_map`), overlapping with the GPU: single points are computed in parts
+  (`split_into_parts`) and the CPU work of one part runs while the GPU computes the next. Scripts that use
+  `workers > 1` need an `if __name__ == "__main__":` guard.
 - `datasets.py` (HF download, `sample_subset`); `scripts/build_phonon_dataset.py`.
 
 ## Conventions

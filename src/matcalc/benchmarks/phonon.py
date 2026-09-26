@@ -30,7 +30,7 @@ from pymatgen.core import Structure
 
 from matcalc.properties.phonon import HarmonicProperties, displaced_supercells, harmonic_properties, make_phonopy
 
-from ._common import OK, Benchmark, Material, failed, pool_map, worker_pool
+from ._common import OK, Benchmark, Material, failed, pool_map, split_into_parts, worker_pool
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -41,8 +41,6 @@ if TYPE_CHECKING:
 
 QUANTITIES = ("CV", "stable", "min_frequency")
 
-PARTS = 8
-"""The displaced supercells are evaluated in this many parts, so that phonopy overlaps with the GPU."""
 
 DATASET = Path(__file__).parent / "data" / "alexandria-pbe-phonon.json.gz"
 """The 1,170 compounds with the settings of their DFT phonon calculations (built by
@@ -183,7 +181,7 @@ class PhononBenchmark(Benchmark):
             # The forces are computed part by part; the phonopy step of a part (force constants and
             # frequencies, CPU only) runs in the worker processes while the GPU computes the next part.
             pending = []
-            for part in _parts(todo, supercells, PARTS):
+            for part in split_into_parts(todo, [sum(len(c) for c in supercells[i]) for i in todo]):
                 with self.stage("single points"):
                     forces = iter(
                         simulator.single_point([c for i in part for c in supercells[i]], compute_stress=False)
@@ -321,17 +319,3 @@ def harmonic_properties_of(job: PhononJob) -> HarmonicProperties | str:
         return harmonic_properties(phonon, job.forces, temperature=job.temperature, mesh=job.mesh)
     except Exception as exc:  # noqa: BLE001 - one compound must not stop the benchmark
         return f"phonopy failed: {type(exc).__name__}: {exc}"
-
-
-def _parts(indices: list[int], supercells: dict[int, list[Atoms]], n_parts: int) -> list[list[int]]:
-    """Split compounds into consecutive groups with about the same number of supercell atoms."""
-    sizes = [sum(len(cell) for cell in supercells[i]) for i in indices]
-    target = max(1, sum(sizes) / n_parts)
-    parts: list[list[int]] = [[]]
-    total = 0.0
-    for i, size in zip(indices, sizes, strict=True):
-        if total >= target * len(parts) and parts[-1]:
-            parts.append([])
-        parts[-1].append(i)
-        total += size
-    return [part for part in parts if part]

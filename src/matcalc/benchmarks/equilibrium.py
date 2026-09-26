@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from matcalc.properties.energetics import elemental_reference_structures, formation_energy_per_atom
 from matcalc.properties.similarity import fingerprint_distance, structure_fingerprint_or_error
 
-from ._common import OK, Benchmark, Material, failed, parallel_map
+from ._common import OK, Benchmark, Material, failed, pool_map, worker_pool
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -135,27 +135,35 @@ class EquilibriumBenchmark(Benchmark):
             Per compound: relaxed ``structure``, ``Eform`` (eV/atom), ``d``, ``status`` and
             ``relax_steps``.
         """
-        with self.stage("relax"):
-            starts = [self._displaced(material.structure) for material in materials]
-            relaxed = simulator.relax(starts, fmax=self.fmax, max_steps=self.max_steps)
-        predictions = [self._predict(result) for result in relaxed]
-
-        # Fingerprints need only the CPU; they are computed in parallel processes. The DFT structure's
-        # fingerprint does not depend on the model and is computed once per benchmark.
-        with self.stage("fingerprints"):
-            done = [i for i, prediction in enumerate(predictions) if prediction["status"] == OK]
-            new_dft = sorted({materials[i].material_id for i in done} - set(self._dft_fingerprints))
+        with worker_pool(self.workers) as pool:
+            # The fingerprints of the DFT structures do not depend on the model; they are computed once per
+            # benchmark, in the worker processes while the GPU relaxes.
+            new_dft = sorted({m.material_id for m in materials} - set(self._dft_fingerprints))
             by_id = {m.material_id: m for m in materials}
-            todo = [predictions[i]["structure"] for i in done] + [by_id[m].reference["structure"] for m in new_dft]
-            fingerprints = parallel_map(structure_fingerprint_or_error, todo, workers=self.workers)
-            self._dft_fingerprints.update(zip(new_dft, fingerprints[len(done) :], strict=True))
-            for i, relaxed_fingerprint in zip(done, fingerprints[: len(done)], strict=True):
-                dft_fingerprint = self._dft_fingerprints[materials[i].material_id]
-                for fingerprint in (relaxed_fingerprint, dft_fingerprint):
-                    if isinstance(fingerprint, str):  # the error message
-                        predictions[i]["status"] = f"fingerprint failed: {fingerprint}"
-                if predictions[i]["status"] == OK:
-                    predictions[i]["d"] = fingerprint_distance(relaxed_fingerprint, dft_fingerprint)
+            dft_fingerprints = pool_map(
+                pool,
+                structure_fingerprint_or_error,
+                [by_id[material_id].reference["structure"] for material_id in new_dft],
+            )
+            with self.stage("relax"):
+                starts = [self._displaced(material.structure) for material in materials]
+                relaxed = simulator.relax(starts, fmax=self.fmax, max_steps=self.max_steps)
+            predictions = [self._predict(result) for result in relaxed]
+
+            # Fingerprints need only the CPU; they are computed in parallel processes.
+            with self.stage("fingerprints"):
+                done = [i for i, prediction in enumerate(predictions) if prediction["status"] == OK]
+                fingerprints = pool_map(
+                    pool, structure_fingerprint_or_error, [predictions[i]["structure"] for i in done]
+                )
+                self._dft_fingerprints.update(zip(new_dft, dft_fingerprints, strict=True))
+                for i, relaxed_fingerprint in zip(done, fingerprints, strict=True):
+                    dft_fingerprint = self._dft_fingerprints[materials[i].material_id]
+                    for fingerprint in (relaxed_fingerprint, dft_fingerprint):
+                        if isinstance(fingerprint, str):  # the error message
+                            predictions[i]["status"] = f"fingerprint failed: {fingerprint}"
+                    if predictions[i]["status"] == OK:
+                        predictions[i]["d"] = fingerprint_distance(relaxed_fingerprint, dft_fingerprint)
         return predictions
 
     def _displaced(self, structure: Structure) -> Structure:

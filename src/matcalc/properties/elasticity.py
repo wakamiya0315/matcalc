@@ -9,16 +9,19 @@ The bulk (K) and shear (G) moduli are the Voigt-Reuss-Hill (VRH) averages of the
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 import numpy as np
+from ase import Atoms
+from pymatgen.core import Lattice, Structure
 from pymatgen.core.elasticity import DeformedStructureSet, ElasticTensor, Strain
 from pymatgen.core.elasticity.elastic import get_strain_state_dict
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from pymatgen.core import Structure
+    from pymatgen.core.elasticity import Deformation
 
 NORMAL_STRAINS: tuple[float, ...] = (-0.01, -0.005, 0.005, 0.01)
 """Strains applied along xx, yy and zz (dimensionless)."""
@@ -30,12 +33,39 @@ ZERO_TOLERANCE = 1e-7
 """Fitted constants smaller than this (eV/Å^3) are set to zero, as upstream matcalc does."""
 
 
+@lru_cache(maxsize=8)
+def strain_states(
+    normal_strains: tuple[float, ...] = NORMAL_STRAINS, shear_strains: tuple[float, ...] = SHEAR_STRAINS
+) -> tuple[tuple[Deformation, ...], tuple[Strain, ...]]:
+    """The deformation gradients of the strained cells and their Green-Lagrange strains.
+
+    They are the same for every structure, in the order of pymatgen's ``DeformedStructureSet``
+    (``symmetry=False``): four normal strains each along xx, yy and zz, then four shear strains each
+    along yz, xz and xy.
+
+    Args:
+        normal_strains: Strains along xx, yy and zz.
+        shear_strains: Strains along yz, xz and xy.
+
+    Returns:
+        The deformation gradients and the strains, 6 x 4 = 24 each with the defaults.
+    """
+    placeholder = Structure(Lattice.cubic(3.0), ["H"], [[0.0, 0.0, 0.0]])
+    deformations = tuple(DeformedStructureSet(placeholder, normal_strains, shear_strains, symmetry=False).deformations)
+    return deformations, tuple(Strain.from_deformation(deformation) for deformation in deformations)
+
+
 def strained_structures(
     structure: Structure,
     normal_strains: Sequence[float] = NORMAL_STRAINS,
     shear_strains: Sequence[float] = SHEAR_STRAINS,
-) -> tuple[list[Structure], list[Strain]]:
+) -> tuple[list[Atoms], list[Strain]]:
     """Strain the relaxed cell along each Voigt component.
+
+    The cells are those of pymatgen's ``DeformedStructureSet``: each deformation gradient F acts on
+    the lattice vectors, and the fractional coordinates are kept. They are built directly as ASE
+    ``Atoms``, which is ten times faster than going through pymatgen for the 95,000 cells of the
+    Elasticity benchmark.
 
     Args:
         structure: Relaxed structure.
@@ -43,11 +73,20 @@ def strained_structures(
         shear_strains: Strains along yz, xz and xy.
 
     Returns:
-        The strained structures (6 x 4 = 24 with the defaults) and the Green-Lagrange strain of each.
+        The strained cells (6 x 4 = 24 with the defaults) and the Green-Lagrange strain of each.
     """
-    deformed = DeformedStructureSet(structure, normal_strains, shear_strains, symmetry=False)
-    strains = [Strain.from_deformation(deformation) for deformation in deformed.deformations]
-    return list(deformed), strains
+    deformations, strains = strain_states(tuple(normal_strains), tuple(shear_strains))
+    numbers = np.array(structure.atomic_numbers)
+    fractional = structure.frac_coords
+    lattice = structure.lattice.matrix
+    cells = [
+        # pymatgen's Deformation.apply_to_structure: new lattice = (F @ old lattice^T)^T
+        Atoms(
+            numbers=numbers, cell=np.transpose(np.dot(f, np.transpose(lattice))), scaled_positions=fractional, pbc=True
+        )
+        for f in deformations
+    ]
+    return cells, list(strains)
 
 
 @dataclass

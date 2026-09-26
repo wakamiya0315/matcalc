@@ -149,10 +149,13 @@ def test_run_benchmarks_merges_models_on_the_material_id(
 
 
 def test_parallel_post_processing_gives_the_same_numbers(
-    phonon_dataset: Path, equilibrium_dataset: Path, emt_simulator: ASESimulator
+    phonon_dataset: Path, elasticity_dataset: Path, equilibrium_dataset: Path, emt_simulator: ASESimulator
 ) -> None:
     serial = PhononBenchmark(phonon_dataset).run(emt_simulator, "emt")
     parallel = PhononBenchmark(phonon_dataset, workers=2).run(emt_simulator, "emt")
+    assert parallel.equals(serial)
+    serial = ElasticityBenchmark(elasticity_dataset).run(emt_simulator, "emt")
+    parallel = ElasticityBenchmark(elasticity_dataset, workers=2).run(emt_simulator, "emt")
     assert parallel.equals(serial)
     pytest.importorskip("matminer")
     serial = EquilibriumBenchmark(equilibrium_dataset).run(emt_simulator, "emt")

@@ -242,28 +242,6 @@ class Benchmark:
         return pd.DataFrame([by_id[m.material_id] for m in self.materials if m.material_id in by_id])
 
 
-def parallel_map[T, R](function: Callable[[T], R], items: Sequence[T], *, workers: int) -> list[R]:
-    """``[function(item) for item in items]``, computed in ``workers`` processes when that is more than one.
-
-    Used for CPU-heavy post-processing while the GPU has nothing to do. The processes are started with
-    "spawn" (fork is not safe after CUDA and OpenMP have started threads), so ``function`` must be
-    importable, i.e. defined at module level.
-
-    Args:
-        function: Function applied to every item.
-        items: The items.
-        workers: Number of processes; 1 computes everything in this process.
-
-    Returns:
-        The results, in the order of ``items``.
-    """
-    if workers <= 1 or len(items) <= 1:
-        return [function(item) for item in items]
-    context = multiprocessing.get_context("spawn")
-    with ProcessPoolExecutor(max_workers=min(workers, len(items)), mp_context=context) as pool:
-        return list(pool.map(function, items))
-
-
 @contextmanager
 def worker_pool(workers: int) -> Iterator[ProcessPoolExecutor | None]:
     """Worker processes for CPU work that overlaps with the GPU (``None`` for one worker).
@@ -297,6 +275,35 @@ def pool_map[T, R](pool: ProcessPoolExecutor | None, function: Callable[[T], R],
     if pool is None or len(items) <= 1:
         return [function(item) for item in items]
     return pool.map(function, items)
+
+
+OVERLAP_PARTS = 8
+"""Single points are computed in this many parts when CPU post-processing runs next to the GPU."""
+
+
+def split_into_parts(indices: Sequence[int], sizes: Sequence[float], n_parts: int = OVERLAP_PARTS) -> list[list[int]]:
+    """Split items into consecutive groups of about the same total size.
+
+    Used to compute single points part by part, so that the CPU work on one part (phonopy, fits) runs in
+    worker processes while the GPU computes the next part.
+
+    Args:
+        indices: The items, in order.
+        sizes: Size of every item (for example its number of atoms).
+        n_parts: Number of groups wanted.
+
+    Returns:
+        The groups, in order; none is empty.
+    """
+    target = max(1.0, float(sum(sizes)) / n_parts)
+    parts: list[list[int]] = [[]]
+    total = 0.0
+    for index, size in zip(indices, sizes, strict=True):
+        if total >= target * len(parts) and parts[-1]:
+            parts.append([])
+        parts[-1].append(index)
+        total += size
+    return [part for part in parts if part]
 
 
 def failed(reason: str, quantities: Sequence[str]) -> dict[str, Any]:

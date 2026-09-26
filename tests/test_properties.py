@@ -111,3 +111,16 @@ def test_stability_qpoints_are_those_of_the_reference() -> None:
     qpoints = stability_qpoints(make_phonopy(structure("Cu"), [[2, 0, 0], [0, 2, 0], [0, 0, 1]], FCC_PRIMITIVE))
     assert len(qpoints) == 4
     assert {tuple(np.round(q % 1, 6)) for q in qpoints} == {(0, 0, 0), (0.5, 0, 0), (0, 0.5, 0), (0.5, 0.5, 0)}
+
+
+def test_strained_cells_are_those_of_pymatgen() -> None:
+    from pymatgen.core.elasticity import DeformedStructureSet
+
+    cell = structure("CuAu")
+    cells, strains = strained_structures(cell)
+    expected = DeformedStructureSet(cell, symmetry=False)
+    assert len(cells) == len(expected) == len(strains) == 24
+    for atoms, reference in zip(cells, expected, strict=True):
+        assert_allclose(atoms.cell.array, reference.lattice.matrix, atol=1e-12)
+        assert_allclose(atoms.positions, reference.cart_coords, atol=1e-12)
+        assert list(atoms.numbers) == list(reference.atomic_numbers)
