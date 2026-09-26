@@ -1,14 +1,19 @@
 # Validation
 
-How the refactored code and the TorchSim simulator were checked against upstream matcalc, and how fast
-they are. Model: MACE-MatPES-PBE-0 (float64 unless stated). Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb
-slice with 4 CPU cores (`gpu_h`); quick checks on the shared interactive node. Software: torch 2.14.0+cu126,
-torch-sim-atomistic 0.6.2, mace-torch 0.3.16, ase 3.29.0, pymatgen 2026.9.23, phonopy 4.6.0. Scripts are in
+How the refactored code and the TorchSim simulator were checked, and how fast they are. The MLIP of all
+runs is MACE-MatPES-PBE-0 in float64, used only as a test model (it is not part of matcalc; see
+`validation/mace_models.py`). Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
+(`gpu_h`); quick checks on the shared interactive node. Software: torch 2.14.0+cu126, torch-sim-atomistic
+0.6.2, moyopy 0.20.0, mace-torch 0.3.16, ase 3.29.0, pymatgen 2026.9.23, phonopy 4.6.0. Scripts are in
 [`validation/`](../validation/).
 
 Agreement is judged material by material with these tolerances: |ΔK_vrh|, |ΔG_vrh| ≤ 1 GPa;
 |ΔC_V(300 K)| ≤ 0.5 J/(K·mol); |ΔE_form| ≤ 5 meV/atom; |Δd| ≤ 0.01; |Δ softening scale| ≤ 0.01; and the same
 materials without a prediction (NaN).
+
+Sections 1–4 cover Equilibrium, Elasticity and Softening, which reproduce upstream, and the upstream form
+of the Phonon benchmark (20 Å supercells) that was used to validate the simulators. Section 5 covers the
+Phonon benchmark as it is now, on the protocol of its DFT reference.
 
 ## 1. Refactor vs upstream (V2)
 
@@ -20,7 +25,7 @@ between two runs of upstream itself (GPU summation order).
 |---|---|---|---|
 | Softening | softening scale (max rel.) | 6.1e-11 | 6.4e-11 |
 | Elasticity | K_vrh / G_vrh (max rel.) | 4.7e-14 / 4.8e-14 | 5.8e-14 / 3.4e-14 |
-| Phonon | C_V (max abs., J/(K·mol)) | 3.9e-12 | 3.5e-12 |
+| Phonon (upstream protocol) | C_V (max abs., J/(K·mol)) | 3.9e-12 | 3.5e-12 |
 | Equilibrium | E_form (eV/atom) / d (max abs.) | 2.0e-13 / 4.6e-15 | 7.2e-14 / 2.3e-15 |
 
 (The softening floor is set by upstream's `curve_fit` tolerance; the refactor uses the closed form.)
@@ -37,8 +42,6 @@ Single points on cells from the datasets, TorchSim MACE vs ASE MACE (maximum ove
 | Equilibrium, perturbed 0.1 Å | 10 | 1.4e-15 | 6.2e-14 | 2.0e-15 |
 | Dense cells, 0.23–0.24 atoms/Å³ | 4 | 1.2e-14 | 1.0e-14 | 2.1e-14 |
 
-The cell-list neighbour list gives the same numbers (≤ 8.8e-14 eV/Å).
-
 Relaxations (FIRE + Frechet cell filter, fmax 0.05 eV/Å, 500 steps) of 30 structures, with room for only
 about four structures per batch so that most of them join a batch that is already running:
 
@@ -52,6 +55,11 @@ get the first row (see `simulation/torchsim.py`): the first step of a structure 
 (TorchSim halved its time step), the order in which FIRE updates its mixing parameter after `n_min` downhill
 steps (TorchSim mixes with the already reduced value), and the convergence test (ASE tests the atomic forces
 transformed by the deformation gradient plus the cell forces, and tests before the first step too).
+
+With the symmetry constraint (Phonon benchmark), TorchSim's `FixSymmetry` takes the place of ASE's; ASE's
+constraint first snaps the structure onto its symmetry, and `TorchSimSimulator` does the same with ASE's
+function. `BatchedFixSymmetry` symmetrizes all structures of a batch at once and agrees with TorchSim's
+`FixSymmetry` to 1e-12. Section 5 compares the two paths on the full Phonon benchmark.
 
 ## 3. Subsets of 100 materials (V4)
 
@@ -67,9 +75,6 @@ fingerprint step).
 | Elasticity | 114.9 s | 42.7 s | 100 % | K 9.0e-8 GPa, G 4.3e-8 GPa |
 | Equilibrium | 956 s | 342 s | 100 % | E_form 6.1e-13 eV/atom, d 2.2e-13 |
 
-On 100 materials the TorchSim times are dominated by fixed costs (measuring the batch capacity, the first
-calls); the full datasets below show the real speed-up.
-
 ## 4. Full datasets (V5)
 
 | Benchmark | Materials | Reference (ASE) | TorchSimSimulator | Speed-up | Within tolerance | NaN pattern |
@@ -77,39 +82,119 @@ calls); the full datasets below show the real speed-up.
 | Softening | 979 | 241 s | 34 s | 7.0× | 979/979 (max 5.7e-10) | identical |
 | Elasticity | 3,953 | 5,667 s | 372 s | 15.2× | 3,953/3,953 (median 3.5e-12 GPa, max 0.15 GPa) | identical (9) |
 | Equilibrium | 972 | 2,330 s | 427 s | 5.5× | 972/972 (max 4.2e-11 eV/atom) | identical (20) |
-| Phonon | 1,170 | 7,070 s | *pending* | | | |
+| Phonon, upstream protocol | 1,170 | 7,070 s | 5,404 s | 1.3× | 1,169/1,169 (max 4.7e-5 J/(K·mol)) | identical (1) |
 
 References: upstream `main` for Softening, Elasticity and Phonon; the refactored ASE path for Equilibrium
-(upstream crashes, see above). TorchSim runs use float64 and 4 worker processes for phonopy and fingerprints.
+(upstream crashes, see above). TorchSim runs use 4 worker processes for phonopy and fingerprints. Stage
+times of the TorchSim runs (s): Elasticity relax 149, strains 27, single points 164, fits 31; Equilibrium
+elemental references 240, relax 81, fingerprints 106 (ASE path: 831, 1,030, 467).
 
-Stage times of the TorchSim runs (s): Elasticity relax 149, strains 27, single points 164, fits 31;
-Equilibrium elemental references 240, relax 81, fingerprints 106 (ASE path: 831, 1,030, 467).
+The upstream Phonon protocol needs the forces on 35,000 displaced supercells of up to 3,822 atoms (27
+million atoms); a supercell of several hundred atoms already keeps the GPU busy on its own, so batching gains
+little there. Validating it exposed a batching bug: the batch capacity was raised to the largest structure
+of a call, so in the chunk with the 3,822-atom SiC supercells (which do not fit on the 47 GB GPU at all)
+every other batch ran out of memory and was computed twice. Single points now keep the measured capacity,
+evaluate a larger structure on its own, and lower the capacity after running out of memory.
 
 Errors against DFT are identical for both paths: Elasticity MAE K_vrh 18.50 GPa, G_vrh 13.16 GPa
 (3,944 materials); Equilibrium MAE E_form 0.0891 eV/atom, mean d 0.308 (952 materials); Softening mean
-scale 0.928 (std 0.127).
+scale 0.928 (std 0.127); Phonon (upstream protocol) MAE C_V 13.13 J/(K·mol).
 
-## 5. Where the time goes, and options that did not pay off
+## 5. Phonon on the protocol of the DFT reference (V10–V13)
 
-Measured on one `gpu_h` slice (12 Phonon materials, 307 displaced supercells, 54–1,050 atoms, 155k atoms):
+### 5.1 The reference
 
-| Supercell forces | Time | max \|ΔF\| vs ASE (eV/Å) |
-|---|---|---|
-| ASE, float64 | 26.4 s | – |
-| TorchSim, float64 | 22.7 s | 2.2e-13 |
-| TorchSim, float64, cell-list neighbour list | 22.8 s | 7.0e-10 |
-| TorchSim, float32 | 18.6 s | 1.2e-4 |
-| TorchSim, float64, cuEquivariance kernels | 69.6 s | 7.0e-10 |
+The DFT reference of the Phonon benchmark is the Alexandria PBE phonon database (A. Loew et al., npj
+Comput. Mater. 2025, doi:10.1038/s41524-025-01650-1): a PBE recalculation of the MDR phonon database with
+phonopy. Its per-compound phonopy files (https://alexandria.icams.rub.de/data/phonon_benchmark/pbe/, CC BY
+4.0) give, for the 1,170 compounds of the benchmark:
 
-Relaxing 300 small Elasticity cells: ASE 131.9 s, TorchSim 30.2 s.
+- the PBE unit cell (conventional; 1–4 times the primitive cell), with the same C_V(300 K) as upstream's
+  dataset (to 5e-7 J/(K·mol));
+- a diagonal supercell matrix on that cell (supercells of 24–180 atoms, median 108; no fixed length:
+  the shortest supercell vector ranges from 3.1 to 19.8 Å), and phonopy's primitive matrix;
+- the displacements: 0.01 Å, 36,407 in total; phonopy's symmetry tolerance 1e-5 Å (phonopy 2.29/2.32);
+- the frequencies at the q-points of the stability test, and (in the summary table) a stability flag.
 
-- Large supercells already keep the GPU busy one at a time, so batching them gains little; the Phonon
-  speed-up comes from the batched relaxations and the parallel phonopy step. Small cells (relaxations,
-  strained cells, softening frames) gain the most.
-- float32 is an option (`--dtype float32`) but not the default: on the 100-material subsets it stayed within
-  tolerance for Softening (max 6e-4), Elasticity (K 0.016 GPa) and Phonon (C_V 0.18 J/(K·mol)); in
-  Equilibrium E_form differed by at most 0.3 meV/atom but one relaxation's convergence flag flipped.
-- cuEquivariance kernels were slower on this MIG slice and float64 relaxations were not identical to the
-  e3nn ones (1.6e-5 eV/atom, different step counts); the option was removed.
-- TorchSim's default GPU neighbour list caps the neighbours per atom at 192 within 6 Å; dense structures in
-  the full datasets exceed it, so the MACE model uses `GrowingNeighborList`, which raises the cap on demand.
+The paper relaxes the MLIPs from the PBE geometry with ASE's FIRE on a Frechet cell filter keeping the
+space group, fmax 0.005 eV/Å, and takes the thermal properties on a 20 x 20 x 20 q-mesh at 300 K. The
+benchmark follows this and reuses the DFT supercells and displacements (`scripts/build_phonon_dataset.py`
+extracts them). phonopy 4.6 would not generate the same displacements from the same cells (15 of the first
+40 compounds), which is another reason to take them from the files.
+
+**The benchmark's phonopy step with the DFT forces** (`validation/phonon_dft_check.py`): for all 1,170
+compounds, C_V(300 K) agrees with the DFT value to a median of 0.0076 J/(K·mol) (99 % within 0.43, largest
+1.84, 9 compounds above 0.5, 6 of them DFT-unstable). phonopy's own mesh sum with the stored DFT force
+constants leaves residuals of the same size on the 48 compounds tried, whatever the mesh variant, so the
+reference integrated slightly differently. The frequencies stored with the reference are reproduced at the points (n/S) of the supercell
+matrix taken as reduced coordinates of the primitive reciprocal lattice (96 % of the compounds with a
+non-primitive unit cell within 0.05 THz; the transformed points give 31 %), so the stability test uses
+these points. Alexandria's stability flag, however, does not follow from any threshold on these
+frequencies: the -50 K test on the DFT frequencies reproduces it for about 90 % of the compounds. The
+benchmark keeps the flag as `stable_DFT` for the DFT-stable subset and also reports `min_frequency_DFT`.
+
+**Symmetry tolerance.** With ASE's default tolerance of 0.01 Å, 29 of the 1,170 DFT structures are found
+in a higher space group than DFT's (for example P2_1/m → Pnma), and ASE's constraint snaps them onto it;
+their DFT displacements then no longer fit and phonopy cannot build the force constants. At the DFT's
+tolerance, 1e-5 Å, spglib and moyopy both find the DFT space group for every structure, so the benchmark
+uses 1e-5 Å.
+
+### 5.2 MACE-MatPES-PBE-0 on the full benchmark
+
+Full benchmark, same protocol, TorchSim (final code, 3 worker processes) and ASE (one structure at a time,
+chunks of 20 compounds, 4 workers), one `gpu_h` slice each:
+
+| | Wall time | Relax | Displacements | Single points | phonopy (waiting) |
+|---|---|---|---|---|---|
+| ASE | 4,349 s | 2,951 s | 203 s | 1,065 s | 88 s |
+| `TorchSimSimulator` | **1,214 s** | 656 s | 19 s | 514 s | 25 s |
+
+TorchSim is 3.6× faster than ASE on this protocol, and 5.8× faster than upstream's own Phonon benchmark
+with ASE (7,070 s, section 4), which needed 8 times as many supercell atoms.
+
+**TorchSim vs ASE, compound by compound** (same code, runs V12): C_V within tolerance for 1,170/1,170
+(median difference 1e-11 J/(K·mol), largest 1.4e-3), the same status and the same stability for every
+compound, and the same number of FIRE steps for 1,168; the other two relaxations are among the longest
+(1,081 vs 1,099 and 2,340 vs 2,339 steps). The final code passes the unit cell to phonopy as the primitive
+cell when the DFT calculation did (phonopy 4 otherwise searches for a primitive cell itself); this changed
+C_V of one compound (P2Se5) by 0.08 J/(K·mol) and no other by more than 0.001. For three compounds phonopy
+finds a higher space group in the relaxed structure than in DFT and generates the displacements anew
+(same amplitude); their C_V is the same either way.
+
+**Results for MACE-MatPES-PBE-0** (final run):
+
+| | |
+|---|---|
+| Relaxations converged within 5,000 steps (atoms and cell below 0.005 eV/Å) | 1,170/1,170 |
+| MAE C_V vs DFT, all compounds | 11.71 J/(K·mol) (STDAE 20.01) |
+| MAE C_V vs DFT, DFT-stable compounds (996) | 10.85 J/(K·mol) (STDAE 18.04) |
+| Stability vs `stable_DFT`: TS / TU / FU / FS | 984 / 38 / 12 / 136 |
+
+(The -50 K test on the DFT frequencies themselves agrees with `stable_DFT` for 1,057 compounds, so part
+of the disagreement is in the flag.)
+
+**Maximum number of FIRE steps.** The relaxations take a median of 40 steps (90 % within 145, 99 % within
+656, the longest 2,349). With `max_steps` = 500, 20 compounds (1.7 %) would get no prediction, with 1,000
+still 4; the paper reports 0.1–0.9 % failed relaxations for its models. With in-flight batching the slow
+relaxations run next to the others: the last 60 compounds cost about 160 s of the relaxation stage, so a
+smaller limit would save little time. The default stays at 5,000.
+
+## 6. Where the time goes
+
+Phonon (TorchSim, 1,170 compounds, one `gpu_h` slice):
+
+- **Relaxation** to 0.005 eV/Å with the symmetry constraint. A FIRE step for a batch of 90 unit cells
+  (2,187 atoms) takes 0.41 s in the MACE forward pass (energy, forces, stress); TorchSim's `FixSymmetry`
+  added 0.14 s per step because it symmetrizes structure by structure in Python. `BatchedFixSymmetry` does
+  it for the whole batch at once: 0.53 → 0.32 s per step.
+- **Single points** on the 36,407 displaced supercells (3.4 million atoms): about 7,000 atoms/s, the
+  throughput of the model on this GPU.
+- **phonopy** (force constants, 20 x 20 x 20 mesh) runs in the worker processes while the GPU evaluates the
+  next part of the supercells, so it no longer adds to the wall time. The mesh frequencies are computed a
+  few hundred q-points at a time: phonopy's own mesh calculation holds the dynamical matrices of all
+  q-points at once, up to 5 GB for one large low-symmetry compound, which let a 9 GB CPU job run out of
+  memory with four workers. With four CPU cores, three workers leave one core to the process that drives
+  the GPU.
+
+Model-specific speed-ups (lower precision, custom kernels) are left to whoever builds the model; the
+benchmark does not choose them.

@@ -1,7 +1,7 @@
 # Validation scripts
 
 Scripts behind [docs/validation.md](../docs/validation.md). They were run on TSUBAME4 (NVIDIA H100, MIG
-3g.47gb slice) with MACE-MatPES-PBE-0 in float64. Each run selects the code under test with
+3g.47gb slice) with MACE-MatPES-PBE-0 in float64 as the test model. Each run selects the code under test with
 `PYTHONPATH=<checkout>/src`: a checkout of `main` (upstream matcalc) or of this branch.
 
 | Script | Step | What it does |
@@ -11,6 +11,8 @@ Scripts behind [docs/validation.md](../docs/validation.md). They were run on TSU
 | `run_one.py` | V4, V5 | One benchmark with `upstream`, `fork-ase` or `fork-torchsim`; writes the table (CSV) and timings (JSON). |
 | `compare.py` | V4, V5 | Per-material agreement of two tables against the tolerances (K, G 1 GPa; C_V 0.5 J/(K·mol); E_form 5 meV/atom; d 0.01; softening scale 0.01) and the NaN pattern. |
 | `tsubame_run_v5.sh` | V5 | The `qsub` job script (one benchmark, one code path, on a `gpu_h` node). |
+| `mace_models.py` | all | The test model: MACE-MatPES-PBE-0 as an ASE calculator or a TorchSim model from the same checkpoint (not part of matcalc). |
+| `phonon_dft_check.py` | V12 | The Phonon benchmark's phonopy step fed with the DFT forces of Alexandria's files: how well it gives back the DFT heat capacities and stability. |
 
 Example (a V4-sized subset):
 
