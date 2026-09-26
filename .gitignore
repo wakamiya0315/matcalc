@@ -49,3 +49,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Local work files (downloads, scratch results); never committed
+/temp/

@@ -66,6 +66,8 @@ class RelaxResult:
         converged: ``True`` when ``max_force <= fmax``. As in upstream matcalc, only the atomic
             forces are checked here, not the residual stress on the cell.
         n_steps: Number of optimizer steps taken.
+        optimizer_converged: The optimizer's own stopping criterion was met: every force on the atoms
+            and on the cell of the Frechet cell filter is below ``fmax`` (the Phonon benchmark's test).
         error: Why the relaxation failed, or ``None`` if it ran.
     """
 
@@ -76,6 +78,7 @@ class RelaxResult:
     max_force: float
     converged: bool
     n_steps: int
+    optimizer_converged: bool = False
     error: str | None = None
 
     @classmethod
@@ -94,13 +97,24 @@ class RelaxResult:
 class Simulator(Protocol):
     """The two operations the benchmarks need from a simulator."""
 
-    def relax(self, structures: Sequence[Structure], *, fmax: float, max_steps: int) -> list[RelaxResult]:
+    def relax(
+        self,
+        structures: Sequence[Structure],
+        *,
+        fmax: float,
+        max_steps: int,
+        fix_symmetry: bool = False,
+        symprec: float = 0.01,
+    ) -> list[RelaxResult]:
         """Relax atomic positions and cell of every structure (FIRE with a Frechet cell filter).
 
         Args:
             structures: Structures to relax.
             fmax: The optimizer stops when every force on atoms and cell is below this (eV/Å).
             max_steps: The optimizer gives up after this many steps.
+            fix_symmetry: Keep the space group of each structure (forces, stress and steps are
+                symmetrized, as ASE's ``FixSymmetry`` constraint does).
+            symprec: Symmetry tolerance used to find the space group (Å).
 
         Returns:
             One ``RelaxResult`` per structure, in input order.

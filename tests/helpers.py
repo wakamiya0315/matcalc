@@ -30,5 +30,47 @@ def structure(formula: str) -> Structure:
     return AseAtomsAdaptor.get_structure(atoms)
 
 
+FCC_PRIMITIVE = [[0.0, 0.5, 0.5], [0.5, 0.0, 0.5], [0.5, 0.5, 0.0]]
+"""phonopy's primitive matrix of a face-centred cubic unit cell."""
+
+
+def phonon_entry(
+    material_id: str,
+    formula: str,
+    supercell_matrix: list[list[int]],
+    primitive_matrix: list[list[float]] | None,
+    heat_capacity: float,
+    *,
+    stable: bool,
+    strain: float = 0.0,
+) -> dict:
+    """An entry of the Phonon dataset format, with the displacements phonopy generates (0.01 A).
+
+    ``strain`` stretches the unit cell isotropically (relative change of the lattice constants).
+    """
+    from phonopy import Phonopy
+    from pymatgen.io.phonopy import get_phonopy_structure
+
+    unit_cell = structure(formula).copy()
+    unit_cell.scale_lattice(unit_cell.volume * (1 + strain) ** 3)
+    phonon = Phonopy(
+        get_phonopy_structure(unit_cell), supercell_matrix=supercell_matrix, primitive_matrix=primitive_matrix
+    )
+    phonon.generate_displacements(distance=0.01)
+    return {
+        "mp_id": material_id,
+        "formula": formula,
+        "lattice": unit_cell.lattice.matrix.tolist(),
+        "species": [site.specie.symbol for site in unit_cell],
+        "frac_coords": unit_cell.frac_coords.tolist(),
+        "supercell_matrix": supercell_matrix,
+        "primitive_matrix": primitive_matrix,
+        "displacements": [[d["number"], *d["displacement"]] for d in phonon.dataset["first_atoms"]],
+        "symprec": 1e-5,
+        "heat_capacity": heat_capacity,
+        "stable": stable,
+    }
+
+
 SOFTENING_FACTOR = 1.25
 """The made-up "DFT" forces are the EMT forces times this, so the softening scale must be 1/1.25 = 0.8."""

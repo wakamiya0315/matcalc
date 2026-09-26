@@ -7,13 +7,14 @@ Four benchmarks are provided (see ``docs/benchmarks.md``):
 - ``PhononBenchmark``: heat capacity at 300 K from harmonic phonons (Alexandria, PBE);
 - ``SofteningBenchmark``: systematic softening of forces on high-energy configurations (WBM).
 
-Each benchmark asks a *simulator* for relaxations and single points; ``ASESimulator`` works with
-any ASE calculator.
+Each benchmark asks a *simulator* for relaxations and single points: ``ASESimulator`` works with any
+ASE calculator, ``matcalc.simulation.TorchSimSimulator`` with any TorchSim model. The MLIP itself is
+provided by the user.
 
 Example:
     >>> import matcalc
-    >>> calculator = matcalc.load_mace("MACE-MatPES-PBE-0")
-    >>> table = matcalc.ElasticityBenchmark(n_samples=10).run(calculator, "MACE")
+    >>> calculator = ...  # the ASE calculator of the MLIP to benchmark
+    >>> table = matcalc.ElasticityBenchmark(n_samples=10).run(calculator, "my-mlip")
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ from .benchmarks import (
     run_benchmarks,
 )
 from .config import clear_cache
-from .models import load_mace
 from .simulation import ASESimulator, RelaxResult, Simulator, SinglePointResult
 
 # Library convention: matcalc.* loggers stay silent unless the application configures logging.
@@ -54,6 +54,5 @@ __all__ = [
     "SinglePointResult",
     "SofteningBenchmark",
     "clear_cache",
-    "load_mace",
     "run_benchmarks",
 ]

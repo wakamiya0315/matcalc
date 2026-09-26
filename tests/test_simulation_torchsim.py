@@ -23,7 +23,7 @@ torch = pytest.importorskip("torch")
 from torch_sim.autobatching import calculate_memory_scalers  # noqa: E402
 from torch_sim.models.lennard_jones import LennardJonesModel  # noqa: E402
 
-from matcalc.simulation import SplitSimulator, as_simulator  # noqa: E402
+from matcalc.simulation import as_simulator  # noqa: E402
 from matcalc.simulation.torchsim import TorchSimSimulator  # noqa: E402
 from matcalc.structures import to_ase_atoms  # noqa: E402
 
@@ -88,6 +88,7 @@ def test_relax_matches_ase_fire() -> None:
     batched = TorchSimSimulator(model, show_progress=False).relax(starts, fmax=0.01, max_steps=300)
     for ref, got in zip(reference, batched, strict=True):
         assert got.converged == ref.converged
+        assert got.optimizer_converged == ref.optimizer_converged
         assert got.energy == pytest.approx(ref.energy, abs=1e-9)
         assert_allclose(got.structure.lattice.matrix, ref.structure.lattice.matrix, atol=1e-7)
         assert got.n_steps == ref.n_steps  # same FIRE and same convergence test as ASE
@@ -243,15 +244,28 @@ def test_structures_that_do_not_fit_alone_fail_without_stopping_the_others() -> 
     assert np.isfinite(results[4].energy)
 
 
-def test_split_simulator_relaxes_with_one_and_evaluates_with_the_other() -> None:
-    relaxer = TorchSimSimulator(lj_model(), show_progress=False)
-    evaluator = TorchSimSimulator(_OutOfMemoryModel(lj_model()), show_progress=False)
-    split = SplitSimulator(relaxer, evaluator)
-    assert split.batched
-    relaxed = split.relax(starting_structures()[:2], fmax=0.05, max_steps=50)
-    assert [r.energy for r in relaxed] == [
-        r.energy for r in relaxer.relax(starting_structures()[:2], fmax=0.05, max_steps=50)
-    ]
-    assert evaluator.model.batches == []  # relaxations did not touch the evaluator
-    split.single_point(starting_structures())
-    assert evaluator.model.batches
+def symmetric_starts() -> list[Any]:
+    """Symmetric but strained cells: B2 NiAl, L1_2 Cu3Au and L1_0 CuAu with wrong lattice constants."""
+    starts = []
+    for formula, scale in (("NiAl", 1.03), ("Cu3Au", 0.97), ("CuAu", 1.02)):
+        cell = structure(formula).copy()
+        cell.scale_lattice(cell.volume * scale**3)
+        starts.append(cell)
+    return starts
+
+
+def test_symmetric_relaxation_matches_ase() -> None:
+    pytest.importorskip("moyopy")
+    model = lj_model()
+    starts = symmetric_starts()
+    reference = ASESimulator(TorchSimModelCalculator(model), show_progress=False).relax(
+        starts, fmax=0.005, max_steps=300, fix_symmetry=True
+    )
+    batched = TorchSimSimulator(model, show_progress=False).relax(starts, fmax=0.005, max_steps=300, fix_symmetry=True)
+    for start, ref, got in zip(starts, reference, batched, strict=True):
+        assert got.converged == ref.converged
+        assert got.optimizer_converged == ref.optimizer_converged
+        assert got.n_steps == ref.n_steps
+        assert got.energy == pytest.approx(ref.energy, abs=1e-8)
+        assert_allclose(got.structure.lattice.abc, ref.structure.lattice.abc, atol=1e-6)
+        assert got.structure.get_space_group_info() == start.get_space_group_info()

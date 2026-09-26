@@ -10,10 +10,16 @@ from scipy.optimize import curve_fit
 
 from matcalc.properties.elasticity import fit_elastic_tensor, strained_structures
 from matcalc.properties.energetics import formation_energy_per_atom
-from matcalc.properties.phonon import ThermalProperties, displaced_supercells, make_phonopy, thermal_properties
+from matcalc.properties.phonon import (
+    IMAGINARY_THRESHOLD_THZ,
+    HarmonicProperties,
+    displaced_supercells,
+    harmonic_properties,
+    make_phonopy,
+)
 from matcalc.properties.softening import softening_scale
 
-from .helpers import structure
+from .helpers import FCC_PRIMITIVE, structure
 
 
 def test_elastic_fit_recovers_known_cubic_constants() -> None:
@@ -49,34 +55,51 @@ def test_formation_energy_per_atom() -> None:
     assert formation_energy_per_atom(-15.0, Composition("Cu2Au2"), {"Cu": -4.0, "Au": -3.0}) == pytest.approx(-0.25)
 
 
-def test_heat_capacity_at_grid_temperature() -> None:
-    temperatures = np.arange(0, 1001, 10.0)
-    thermal = ThermalProperties(temperatures, temperatures / 100, temperatures, temperatures, 1.0)
-    assert thermal.heat_capacity_at(300) == pytest.approx(3.0)
-    with pytest.raises(ValueError, match="not on the temperature grid"):
-        thermal.heat_capacity_at(305)
+def _fcc_cu_phonopy() -> object:
+    """Conventional fcc Cu (4 atoms) in a 2 x 2 x 2 supercell, with fcc's primitive matrix."""
+    return make_phonopy(structure("Cu"), 2 * np.eye(3), FCC_PRIMITIVE, symprec=1e-5)
+
+
+def test_displaced_supercells_are_those_of_phonopy() -> None:
+    reference = _fcc_cu_phonopy()
+    reference.generate_displacements(distance=0.01)
+    rows = [[d["number"], *d["displacement"]] for d in reference.dataset["first_atoms"]]
+    cells = displaced_supercells(_fcc_cu_phonopy(), rows)
+    expected = reference.supercells_with_displacements
+    assert len(cells) == len(expected) == 1  # fcc: one symmetry-distinct displacement
+    for atoms, cell in zip(cells, expected, strict=True):
+        assert_allclose(atoms.positions, cell.positions, atol=1e-12)
+        assert list(atoms.numbers) == list(cell.numbers)
 
 
 def test_compact_force_constants_give_the_same_heat_capacity() -> None:
-    """Deliberate change vs upstream: compact force constants and no eigenvectors, same C_V."""
-    cell = structure("Cu1")
+    """Compact force constants and no eigenvectors give the same C_V as the full arrays."""
     calc = EMT()
+    reference = _fcc_cu_phonopy()
+    reference.generate_displacements(distance=0.01)
+    rows = [[d["number"], *d["displacement"]] for d in reference.dataset["first_atoms"]]
 
-    def forces_of(phonon: object) -> list[np.ndarray]:
+    def forces_of(cells: list) -> list[np.ndarray]:
         out = []
-        for atoms in displaced_supercells(phonon, displacement=0.015):
+        for atoms in cells:
             atoms.calc = calc
             out.append(atoms.get_forces())
         return out
 
-    compact = make_phonopy(cell, min_supercell_length=8.0)
-    thermal = thermal_properties(compact, forces_of(compact))
+    compact = _fcc_cu_phonopy()
+    harmonic = harmonic_properties(compact, forces_of(displaced_supercells(compact, rows)), mesh=(20, 20, 20))
 
-    full = make_phonopy(cell, min_supercell_length=8.0)
-    full.forces = forces_of(full)
-    full.produce_force_constants()  # upstream: full force constants
-    full.run_mesh(with_eigenvectors=True)  # upstream: with eigenvectors
-    full.run_thermal_properties(t_step=10, t_max=1000, t_min=0)
+    full = _fcc_cu_phonopy()
+    full.forces = forces_of(displaced_supercells(full, rows))
+    full.produce_force_constants()
+    full.run_mesh([20, 20, 20], with_eigenvectors=True)
+    full.run_thermal_properties(temperatures=[300.0])
+    assert harmonic.heat_capacity == pytest.approx(full.get_thermal_properties_dict()["heat_capacity"][0], rel=1e-8)
+    assert 0.9 * 3 * 8.314 < harmonic.heat_capacity < 3 * 8.314  # one atom per primitive cell
+    assert harmonic.dynamically_stable
 
-    assert_allclose(thermal.heat_capacity, full.thermal_properties.heat_capacity, rtol=1e-8, atol=1e-12)
-    assert thermal.heat_capacity_at(300) == pytest.approx(full.thermal_properties.heat_capacity[30], rel=1e-8)
+
+def test_imaginary_modes_below_minus_50_kelvin_mean_unstable() -> None:
+    assert pytest.approx(1.0418, abs=1e-4) == IMAGINARY_THRESHOLD_THZ
+    assert HarmonicProperties(20.0, 300.0, min_frequency=-1.0).dynamically_stable
+    assert not HarmonicProperties(20.0, 300.0, min_frequency=-1.1).dynamically_stable

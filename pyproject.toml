@@ -37,21 +37,17 @@ version = "0.5.1"
 [project.optional-dependencies]
 # Structural distance d of the Equilibrium benchmark.
 benchmark = ["matminer>=0.10.1"]
-# The MACE models used to validate this fork (matcalc.load_mace).
-mace = ["mace-torch>=0.3.16"]
-# Batched GPU simulator (matcalc.simulation.TorchSimSimulator). 0.6.2 fixed FIRE with cell filters.
-torchsim = ["torch-sim-atomistic>=0.6.2"]
+# Batched GPU simulator (matcalc.simulation.TorchSimSimulator). 0.6.2 fixed FIRE with cell filters;
+# moyopy finds the space groups for TorchSim's symmetry constraint (Phonon benchmark).
+torchsim = ["torch-sim-atomistic>=0.6.2", "moyopy"]
 test = ["pytest>=8.3.5", "matminer>=0.10.1"]
-
-[project.scripts]
-matcalc-bench = "matcalc.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["matcalc", "matcalc.*"]
 
 [tool.setuptools.package-data]
-"matcalc" = ["elemental_refs/*.json.gz", "py.typed"]
+"matcalc" = ["elemental_refs/*.json.gz", "benchmarks/data/*.json.gz", "py.typed"]
 
 [build-system]
 requires = ["setuptools>=58.0.3"]
@@ -96,7 +92,6 @@ docstring-code-format = true
 [tool.pytest.ini_options]
 addopts = "--durations=15 --quiet -rXs --color=yes -p no:warnings"
 markers = [
-    "mace: needs mace-torch and downloads a MACE model (run on a GPU node)",
     "network: downloads benchmark data from Hugging Face",
 ]
 

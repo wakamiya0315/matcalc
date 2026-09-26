@@ -9,8 +9,8 @@ are concatenated into one graph, and batches are sized to fill the GPU memory.
   algorithm as ``ASESimulator`` (ASE's FIRE on a ``FrechetCellFilter``).
 - Single points are packed into batches by size.
 
-TorchSim needs the MLIP as a TorchSim model (``torch_sim.models.interface.ModelInterface``), for example
-``matcalc.load_mace(backend="torchsim")``.
+TorchSim needs the MLIP as a TorchSim model (``torch_sim.models.interface.ModelInterface``), provided by
+the user.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from __future__ import annotations
 import gc
 import logging
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -25,6 +26,7 @@ import torch
 import torch_sim as ts
 import torch_sim.math as tsm
 from torch_sim.autobatching import calculate_memory_scalers, estimate_max_memory_scaler, to_constant_volume_bins
+from torch_sim.constraints import FixSymmetry
 from torch_sim.optimizers import fire_init, fire_step
 from tqdm import tqdm
 
@@ -153,77 +155,6 @@ def converged_before_relaxing(structure: Structure | Atoms, start: SinglePointRe
     return bool(largest < fmax)
 
 
-class GrowingNeighborList:
-    """Batched GPU neighbour list whose per-atom neighbour cap grows when a structure needs more room.
-
-    TorchSim's default GPU neighbour list (nvalchemiops, naive N^2 per structure) sizes its buffers for at
-    most 192 neighbours per atom within the cutoff, i.e. an average density of 0.2 atoms/Å^3; dense
-    structures in the benchmark datasets have more and make it fail (TorchSim issue #545). This is the
-    same algorithm with an explicit cap that is doubled until every structure fits and then kept.
-
-    Attributes:
-        max_neighbors: Current neighbour cap per atom.
-    """
-
-    def __init__(self, max_neighbors: int = 192) -> None:
-        """
-        Args:
-            max_neighbors: Initial neighbour cap per atom.
-        """
-        self.max_neighbors = max_neighbors
-
-    def __call__(
-        self,
-        positions: torch.Tensor,
-        cell: torch.Tensor,
-        pbc: torch.Tensor,
-        cutoff: float,
-        system_idx: torch.Tensor,
-        self_interaction: bool = False,  # noqa: FBT001, FBT002 - TorchSim's neighbour-list signature
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Neighbour pairs within ``cutoff`` for a batch of structures.
-
-        Args:
-            positions: Atomic positions, shape (n_atoms, 3) (Å).
-            cell: Cells as row vectors, shape (n_structures, 3, 3) (Å).
-            pbc: Periodic boundary conditions.
-            cutoff: Cutoff radius (Å).
-            system_idx: Structure index of every atom.
-            self_interaction: Must be False (MACE does not use self pairs).
-
-        Returns:
-            Pairs (2, n_pairs), structure index of every pair, and the lattice shifts of every pair.
-
-        Raises:
-            ValueError: If ``self_interaction`` is requested.
-        """
-        from nvalchemiops.neighbors.neighbor_utils import NeighborOverflowError
-        from nvalchemiops.torch.neighbors import batch_naive_neighbor_list
-        from torch_sim.neighbors.utils import normalize_inputs
-
-        if self_interaction:
-            raise ValueError("GrowingNeighborList does not produce self pairs")
-        cell, pbc = normalize_inputs(cell, pbc, int(system_idx.max().item()) + 1)
-        while True:
-            try:
-                result = batch_naive_neighbor_list(
-                    positions=positions,
-                    cutoff=float(cutoff),
-                    batch_idx=system_idx.to(torch.int32),
-                    cell=cell,
-                    pbc=pbc.to(torch.bool),
-                    max_neighbors=self.max_neighbors,
-                    return_neighbor_list=True,
-                )
-                break
-            except NeighborOverflowError:
-                self.max_neighbors *= 2
-                logger.info("Neighbour cap raised to %d per atom", self.max_neighbors)
-        pairs = result[0].to(torch.long)
-        shifts = result[2] if len(result) == 3 else torch.zeros((pairs.shape[1], 3), device=positions.device)  # noqa: PLR2004
-        return pairs, system_idx[pairs[0]], shifts.to(cell.dtype)
-
-
 class TorchSimSimulator:
     """Evaluate many structures per GPU forward pass with TorchSim.
 
@@ -273,13 +204,24 @@ class TorchSimSimulator:
             torch.cuda.memory._set_allocator_settings("expandable_segments:True")  # noqa: SLF001
         self._measured: dict[bool, tuple[float, float, float]] = {}  # stress on/off: (min, max metric, capacity)
 
-    def relax(self, structures: Sequence[Structure], *, fmax: float, max_steps: int) -> list[RelaxResult]:
+    def relax(
+        self,
+        structures: Sequence[Structure],
+        *,
+        fmax: float,
+        max_steps: int,
+        fix_symmetry: bool = False,
+        symprec: float = 0.01,
+    ) -> list[RelaxResult]:
         """Relax atoms and cell of every structure with FIRE on a Frechet cell filter, in batches.
 
         Args:
             structures: Structures to relax.
             fmax: FIRE stops when every force on atoms and cell is below this (eV/Å).
             max_steps: FIRE gives up after this many steps.
+            fix_symmetry: Keep the space group of each structure with TorchSim's ``FixSymmetry``
+                constraint (the counterpart of ASE's; needs ``moyopy``).
+            symprec: Symmetry tolerance used to find the space group (Å).
 
         Returns:
             One ``RelaxResult`` per structure, in input order.
@@ -288,6 +230,8 @@ class TorchSimSimulator:
             return []
         # Like ASE, structures that are already relaxed are not moved at all.
         starts = self.single_point(structures, compute_stress=True)
+        if fix_symmetry:
+            starts = self._symmetrized(structures, starts, symprec)
         todo = [
             i
             for i, (s, r) in enumerate(zip(structures, starts, strict=True))
@@ -295,14 +239,46 @@ class TorchSimSimulator:
         ]
         results = [_unmoved(structures[i], starts[i], fmax) for i in range(len(structures))]
         if todo:
-            for i, relaxed in zip(
-                todo, self._relax_batched([structures[i] for i in todo], fmax, max_steps), strict=True
-            ):
-                results[i] = relaxed
+            relaxed = self._relax_batched(
+                [structures[i] for i in todo], fmax, max_steps, fix_symmetry=fix_symmetry, symprec=symprec
+            )
+            for i, result in zip(todo, relaxed, strict=True):
+                results[i] = result
         return results
 
-    def _relax_batched(self, structures: Sequence[Structure], fmax: float, max_steps: int) -> list[RelaxResult]:
+    def _symmetrized(
+        self, structures: Sequence[Structure], results: list[SinglePointResult], symprec: float
+    ) -> list[SinglePointResult]:
+        """Forces and stress symmetrized like the constraint does, for the test before the first step."""
         state = self._state(structures)
+        constraint = FixSymmetry.from_state(state, symprec=symprec, refine_symmetry_state=False)
+        good = [r.error is None and r.forces is not None and r.stress is not None for r in results]
+        forces = torch.cat(
+            [
+                torch.as_tensor(r.forces if ok else np.zeros((len(s), 3)), dtype=state.dtype, device=state.device)
+                for s, r, ok in zip(structures, results, good, strict=True)
+            ]
+        )
+        stress = torch.stack(
+            [
+                torch.as_tensor(r.stress if ok else np.zeros((3, 3)), dtype=state.dtype, device=state.device)
+                for r, ok in zip(results, good, strict=True)
+            ]
+        )
+        constraint.adjust_forces(state, forces)
+        constraint.adjust_stress(state, stress)
+        per_structure = _per_structure(forces, state)
+        return [
+            replace(r, forces=per_structure[i], stress=stress[i].detach().cpu().numpy()) if good[i] else r
+            for i, r in enumerate(results)
+        ]
+
+    def _relax_batched(
+        self, structures: Sequence[Structure], fmax: float, max_steps: int, *, fix_symmetry: bool, symprec: float
+    ) -> list[RelaxResult]:
+        state = self._state(structures)
+        if fix_symmetry:
+            state.constraints = [FixSymmetry.from_state(state, symprec=symprec, refine_symmetry_state=False)]
 
         def optimize(capacity: float) -> tuple[Any, Any]:
             batcher = ts.InFlightAutoBatcher(
@@ -327,6 +303,7 @@ class TorchSimSimulator:
         energies = final.energy.detach().cpu().numpy()
         forces = _per_structure(final.forces, final)
         stresses = final.stress.detach().cpu().numpy()
+        stopped = ase_convergence(fmax)(final).detach().cpu().numpy()
         results = []
         for i, structure in enumerate(relaxed):
             max_force = float(np.linalg.norm(forces[i], axis=1).max())
@@ -339,6 +316,7 @@ class TorchSimSimulator:
                     max_force=max_force,
                     converged=max_force <= fmax,  # atomic forces only, as ASESimulator and upstream
                     n_steps=batcher.iteration_count[i] * self.steps_between_swaps,
+                    optimizer_converged=bool(stopped[i]),
                 )
             )
         return results
@@ -529,6 +507,7 @@ def _unmoved(structure: Structure | Atoms, start: SinglePointResult, fmax: float
         max_force=max_force,
         converged=max_force <= fmax,
         n_steps=0,
+        optimizer_converged=True,  # kept only for the structures that pass the test before the first step
     )
 
 

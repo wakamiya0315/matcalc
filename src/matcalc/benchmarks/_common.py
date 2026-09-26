@@ -49,12 +49,15 @@ class Material:
         formula: Chemical formula.
         structure: Input structure (DFT-relaxed; for Softening, the first high-energy frame).
         reference: DFT reference data of this material; keys depend on the benchmark.
+        settings: Settings of the DFT calculation that the benchmark reuses (Phonon: supercell and
+            displacements).
     """
 
     material_id: str
     formula: str
     structure: Structure
     reference: dict[str, Any] = field(default_factory=dict)
+    settings: dict[str, Any] = field(default_factory=dict)
 
 
 class Benchmark:
@@ -73,8 +76,8 @@ class Benchmark:
     """Short name, used for file names (e.g. ``"elasticity"``)."""
     id_column: ClassVar[str]
     """Name of the material-id column of the result table (as in upstream matcalc)."""
-    default_dataset: ClassVar[str]
-    """Dataset file used when none is given."""
+    default_dataset: ClassVar[str | Path]
+    """Dataset used when none is given: a file name on Hugging Face or a local ``Path``."""
     reference_columns: ClassVar[tuple[str, ...]] = ()
     """DFT quantities copied into the table as ``<quantity>_DFT`` columns."""
     summary_metrics: ClassVar[dict[str, str]] = {}
@@ -153,8 +156,7 @@ class Benchmark:
         """Run the benchmark for one model.
 
         Args:
-            model: An ASE calculator, a TorchSim model, a simulator, or a MACE model name (see
-                ``matcalc.load_mace``).
+            model: An ASE calculator, a TorchSim model, or a simulator.
             model_name: Label of the model; predicted columns are named ``<quantity>_<model_name>``.
             checkpoint_file: JSON file (``.json`` or ``.json.gz``) with the rows finished so far.
                 It is written after every chunk; if it exists, finished materials are skipped.
@@ -166,7 +168,8 @@ class Benchmark:
             ``<quantity>_<model_name>`` predictions (NaN where ``status_<model_name>`` is not "ok").
         """
         simulator = as_simulator(model)
-        checkpoint = _Checkpoint(checkpoint_file, benchmark=self.name, dataset=str(self.dataset), model=model_name)
+        dataset = self.dataset.name if isinstance(self.dataset, Path) else str(self.dataset)
+        checkpoint = _Checkpoint(checkpoint_file, benchmark=self.name, dataset=dataset, model=model_name)
         finished = {row[self.id_column] for row in checkpoint.rows}
         todo = [material for material in self.materials if material.material_id not in finished]
         if todo:

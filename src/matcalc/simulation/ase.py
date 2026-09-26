@@ -10,6 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+from ase.constraints import FixSymmetry
 from ase.filters import FrechetCellFilter
 from ase.optimize import FIRE
 from tqdm import tqdm
@@ -35,7 +36,7 @@ class ASESimulator:
     any ASE calculator but keeps a GPU mostly idle, because every call holds a single small cell.
 
     Attributes:
-        calculator: ASE calculator of the MLIP (for example ``matcalc.load_mace()``).
+        calculator: ASE calculator of the MLIP.
         show_progress: Show a progress bar over structures.
     """
 
@@ -48,19 +49,29 @@ class ASESimulator:
         self.calculator = calculator
         self.show_progress = show_progress
 
-    def relax(self, structures: Sequence[Structure], *, fmax: float, max_steps: int) -> list[RelaxResult]:
+    def relax(
+        self,
+        structures: Sequence[Structure],
+        *,
+        fmax: float,
+        max_steps: int,
+        fix_symmetry: bool = False,
+        symprec: float = 0.01,
+    ) -> list[RelaxResult]:
         """Relax atoms and cell of every structure with FIRE on a ``FrechetCellFilter``.
 
         Args:
             structures: Structures to relax.
             fmax: FIRE stops when every force on atoms and cell is below this (eV/Å).
             max_steps: FIRE gives up after this many steps.
+            fix_symmetry: Keep the space group of each structure with ASE's ``FixSymmetry`` constraint.
+            symprec: Symmetry tolerance used to find the space group (Å).
 
         Returns:
             One ``RelaxResult`` per structure, in input order.
         """
         return [
-            self._relax_one(structure, fmax=fmax, max_steps=max_steps)
+            self._relax_one(structure, fmax=fmax, max_steps=max_steps, fix_symmetry=fix_symmetry, symprec=symprec)
             for structure in tqdm(structures, desc="relax", disable=not self.show_progress)
         ]
 
@@ -81,12 +92,19 @@ class ASESimulator:
             for structure in tqdm(structures, desc="single point", disable=not self.show_progress)
         ]
 
-    def _relax_one(self, structure: Structure | Atoms, *, fmax: float, max_steps: int) -> RelaxResult:
+    def _relax_one(
+        self, structure: Structure | Atoms, *, fmax: float, max_steps: int, fix_symmetry: bool, symprec: float
+    ) -> RelaxResult:
         try:
             atoms = to_ase_atoms(structure)
             atoms.calc = self.calculator
-            optimizer = FIRE(FrechetCellFilter(atoms), logfile=None)
+            if fix_symmetry:
+                atoms.set_constraint(FixSymmetry(atoms, symprec=symprec))
+            cell_filter = FrechetCellFilter(atoms)
+            optimizer = FIRE(cell_filter, logfile=None)
             optimizer.run(fmax=fmax, steps=max_steps)
+            # FIRE's stopping test on the forces of the filter (atoms and cell)
+            optimizer_converged = bool((cell_filter.get_forces() ** 2).sum(axis=1).max() < fmax**2)
             forces = atoms.get_forces()
             energy = float(atoms.get_potential_energy())
             stress = atoms.get_stress(voigt=False)
@@ -94,8 +112,9 @@ class ASESimulator:
             logger.warning("Relaxation failed: %s: %s", type(exc).__name__, exc)
             return RelaxResult.failed(f"{type(exc).__name__}: {exc}")
         max_force = float(np.linalg.norm(forces, axis=1).max())
-        # pymatgen would keep a reference to the calculator on the structure; detach it first.
+        # pymatgen would keep a reference to the calculator and the constraint on the structure.
         atoms.calc = None
+        atoms.set_constraint()
         return RelaxResult(
             structure=to_pmg_structure(atoms),
             energy=energy,
@@ -104,6 +123,7 @@ class ASESimulator:
             max_force=max_force,
             converged=max_force <= fmax,
             n_steps=optimizer.nsteps,
+            optimizer_converged=optimizer_converged,
         )
 
     def _single_point_one(self, structure: Structure | Atoms, *, compute_stress: bool) -> SinglePointResult:

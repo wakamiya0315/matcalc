@@ -20,6 +20,7 @@ import numpy as np
 import torch
 
 import matcalc  # before torch_sim, as the benchmark runner does
+from mace_models import load_mace
 from matcalc import ASESimulator
 from matcalc.properties.elasticity import strained_structures
 from matcalc.simulation import torchsim as tsim
@@ -96,8 +97,8 @@ def relaxations(report: dict, calc: object, model: object, perturbed: list) -> N
 
 
 def main() -> None:
-    calc = matcalc.load_mace("MACE-MatPES-PBE-0", backend="ase", dtype="float64")
-    model = matcalc.load_mace("MACE-MatPES-PBE-0", backend="torchsim", dtype="float64")
+    calc = load_mace("ase")
+    model = load_mace("torchsim")
     report: dict = {}
     if os.environ.get("V3_ONLY_RELAX"):
         equilibrium = matcalc.EquilibriumBenchmark(n_samples=10, seed=5).materials

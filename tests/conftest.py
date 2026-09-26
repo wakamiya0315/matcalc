@@ -18,7 +18,7 @@ from pymatgen.io.ase import AseAtomsAdaptor
 
 from matcalc import ASESimulator
 
-from .helpers import SOFTENING_FACTOR, structure
+from .helpers import FCC_PRIMITIVE, SOFTENING_FACTOR, phonon_entry, structure
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -54,9 +54,13 @@ def elasticity_dataset(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def phonon_dataset(tmp_path: Path) -> Path:
-    entries = [{"mp_id": "t-Cu", "formula": "Cu", "structure": structure("Cu1"), "heat_capacity": 24.4}]
+    """fcc Cu (conventional cell, 2 x 2 x 2 supercell) and B2 NiAl (3 x 3 x 3), the latter marked unstable."""
+    entries = [
+        phonon_entry("t-Cu", "Cu", [[2, 0, 0], [0, 2, 0], [0, 0, 2]], FCC_PRIMITIVE, 24.4, stable=True),
+        phonon_entry("t-NiAl", "NiAl", [[3, 0, 0], [0, 3, 0], [0, 0, 3]], None, 45.0, stable=False),
+    ]
     path = tmp_path / "phonon.json.gz"
-    dumpfn(entries, path)
+    dumpfn({"entries": entries}, path)
     return path
 
 

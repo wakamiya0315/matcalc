@@ -16,7 +16,7 @@ from matcalc import (
     run_benchmarks,
 )
 
-from .helpers import SOFTENING_FACTOR, structure
+from .helpers import FCC_PRIMITIVE, SOFTENING_FACTOR, phonon_entry, structure
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -72,11 +72,30 @@ def test_checkpoint_resumes(elasticity_dataset: Path, emt_simulator: ASESimulato
 
 
 def test_phonon(phonon_dataset: Path, emt_simulator: ASESimulator) -> None:
-    table = PhononBenchmark(phonon_dataset, min_supercell_length=8.0).run(emt_simulator, "emt")
-    assert table.loc[0, "status_emt"] == "ok"
+    benchmark = PhononBenchmark(phonon_dataset)
+    table = benchmark.run(emt_simulator, "emt")
+    assert list(table["status_emt"]) == ["ok", "ok"]
+    assert list(table["stable_DFT"]) == [True, False]
     heat_capacity = table.loc[0, "CV_emt"]
-    assert 0.8 * 3 * R_GAS < heat_capacity < 3 * R_GAS  # one atom per cell: just below Dulong-Petit
-    assert table.loc[0, "min_frequency_emt"] > -0.1  # fcc Cu is stable
+    assert 0.8 * 3 * R_GAS < heat_capacity < 3 * R_GAS  # one atom per primitive cell: below Dulong-Petit
+    assert table.loc[0, "stable_emt"]  # fcc Cu is dynamically stable
+    assert (table["relax_steps_emt"] > 0).all()
+    summary = benchmark.summarize(table, "emt")
+    assert summary["CV"]["n"] == 2
+    assert summary["CV (DFT-stable)"]["n"] == 1
+    assert summary["CV (DFT-stable)"]["MAE"] == pytest.approx(abs(heat_capacity - 24.4))
+    assert sum(summary["stability"].values()) == 2
+
+
+def test_phonon_without_converged_relaxation_gives_nan(tmp_path: Path, emt_simulator: ASESimulator) -> None:
+    strained = phonon_entry(
+        "t-Cu", "Cu", [[2, 0, 0], [0, 2, 0], [0, 0, 2]], FCC_PRIMITIVE, 24.4, stable=True, strain=0.05
+    )
+    dumpfn({"entries": [strained]}, tmp_path / "strained.json.gz")
+    table = PhononBenchmark(tmp_path / "strained.json.gz", max_steps=2).run(emt_simulator, "emt")
+    assert list(table["status_emt"]) == ["relaxation not converged"]
+    assert table["CV_emt"].isna().all()
+    assert table.loc[0, "relax_steps_emt"] == 2
 
 
 def test_softening(softening_dataset: Path, emt_simulator: ASESimulator) -> None:
@@ -115,8 +134,8 @@ def test_run_benchmarks_merges_models_on_the_material_id(
 def test_parallel_post_processing_gives_the_same_numbers(
     phonon_dataset: Path, equilibrium_dataset: Path, emt_simulator: ASESimulator
 ) -> None:
-    serial = PhononBenchmark(phonon_dataset, min_supercell_length=8.0).run(emt_simulator, "emt")
-    parallel = PhononBenchmark(phonon_dataset, min_supercell_length=8.0, workers=2).run(emt_simulator, "emt")
+    serial = PhononBenchmark(phonon_dataset).run(emt_simulator, "emt")
+    parallel = PhononBenchmark(phonon_dataset, workers=2).run(emt_simulator, "emt")
     assert parallel.equals(serial)
     pytest.importorskip("matminer")
     serial = EquilibriumBenchmark(equilibrium_dataset).run(emt_simulator, "emt")

@@ -1,8 +1,10 @@
-"""V4/V5: run one benchmark with upstream main (ASE, n_jobs=1) or this fork (ASE or TorchSim), MACE-MatPES-PBE-0."""
+"""Run one benchmark with MACE-MatPES-PBE-0 (the test model): upstream main (ASE, n_jobs=1) or this fork
+(ASE or TorchSim). Writes the table (CSV) and the timings and summary (JSON next to it)."""
 
 import argparse
 import json
 import logging
+import sys
 import time
 from pathlib import Path
 
@@ -17,9 +19,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--dtype", default="float64", choices=["float64", "float32"])
     parser.add_argument("--workers", type=int, default=1)
-    parser.add_argument("--min-supercell-length", type=float, default=None, help="phonon only (A)")
-    parser.add_argument("--cueq", action="store_true")
-    parser.add_argument("--fast-single-points", action="store_true", help="float32 + cuEquivariance single points")
+    parser.add_argument("--max-steps", type=int, default=None, help="phonon: maximum FIRE steps")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -53,38 +53,32 @@ def main() -> None:
         import matcalc
         from matcalc.simulation.torchsim import TorchSimSimulator
 
+        sys.path.insert(0, str(Path(__file__).parent))
+        from mace_models import load_mace
+
         backend = "torchsim" if args.code == "fork-torchsim" else "ase"
-        model = matcalc.load_mace("MACE-MatPES-PBE-0", backend=backend, dtype=args.dtype, cueq=args.cueq)
+        model = load_mace(backend, dtype=args.dtype)
         simulator = (TorchSimSimulator(model, show_progress=False) if backend == "torchsim"
                      else matcalc.ASESimulator(model, show_progress=False))
-        if args.fast_single_points:
-            from matcalc.simulation import SplitSimulator
-
-            fast = matcalc.load_mace("MACE-MatPES-PBE-0", backend="torchsim", dtype="float32", cueq=True)
-            evaluator = TorchSimSimulator(fast, show_progress=False)
-            simulator = SplitSimulator(simulator, evaluator)
-        options = {} if args.min_supercell_length is None else {"min_supercell_length": args.min_supercell_length}
+        options = {} if args.max_steps is None else {"max_steps": args.max_steps}
         bench = matcalc.BENCHMARKS[args.benchmark](
             n_samples=args.n_samples, seed=args.seed, workers=args.workers, **options
         )
         loaded = time.perf_counter()
         table = bench.run(simulator, "mace", checkpoint_file=args.checkpoint)
-        extra = {"stage_times_s": {k: round(v, 1) for k, v in bench.timings.items()}}
-        if args.fast_single_points:
-            extra["capacities"] = [round(c) for c in simulator.relaxer.capacities + simulator.evaluator.capacities]
-        elif backend == "torchsim":
+        extra = {"stage_times_s": {k: round(v, 1) for k, v in bench.timings.items()},
+                 "summary": bench.summarize(table, "mace")}
+        if backend == "torchsim":
             extra["capacities"] = [round(c) for c in simulator.capacities]
     end = time.perf_counter()
     table = table[[c for c in table.columns if not c.startswith("structure_")]]
     table.to_csv(args.out, index=False)
-    info = {"code": args.code, "dtype": args.dtype, "workers": args.workers, "cueq": args.cueq,
-            "fast_single_points": args.fast_single_points,
-            "min_supercell_length": args.min_supercell_length,
+    info = {"code": args.code, "dtype": args.dtype, "workers": args.workers, "max_steps": args.max_steps,
             "benchmark": args.benchmark, "n": len(table), "setup_s": round(loaded - start, 1),
             "run_s": round(end - loaded, 1), "gpu": torch.cuda.get_device_name(0),
             "peak_gpu_mem_GiB": round(torch.cuda.max_memory_allocated() / 2**30, 2), **extra}
-    Path(args.out).with_suffix(".json").write_text(json.dumps(info, indent=1))
-    print(json.dumps(info))
+    Path(args.out).with_suffix(".json").write_text(json.dumps(info, indent=1, default=str))
+    print(json.dumps(info, default=str))
 
 
 if __name__ == "__main__":
