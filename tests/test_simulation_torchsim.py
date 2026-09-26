@@ -20,6 +20,7 @@ from .helpers import structure
 ts = pytest.importorskip("torch_sim")
 torch = pytest.importorskip("torch")
 
+from torch_sim.autobatching import calculate_memory_scalers  # noqa: E402
 from torch_sim.models.lennard_jones import LennardJonesModel  # noqa: E402
 
 from matcalc.simulation import as_simulator  # noqa: E402
@@ -208,7 +209,13 @@ def test_single_point_lowers_the_capacity_after_running_out_of_memory() -> None:
         assert got.energy == pytest.approx(ref.energy, abs=1e-12)
         assert_allclose(got.forces, ref.forces, atol=1e-12)
     assert simulator.capacities == sorted(simulator.capacities, reverse=True)  # only ever lowered
-    assert sum(n > 2 for n in small.batches) <= 3  # a few failed batches, not one per batch
+
+    # A capacity somewhat too large costs one failed batch, not one per batch.
+    copies = [rattled("Cu", seed) for seed in range(40)]
+    metric = calculate_memory_scalers(simulator._state(copies), memory_scales_with=model.memory_scales_with)
+    four = _OutOfMemoryModel(model, max_structures=4)
+    TorchSimSimulator(four, max_memory_scaler=6.5 * max(metric), show_progress=False).single_point(copies)
+    assert sum(n > 4 for n in four.batches) == 1
 
 
 def test_single_point_evaluates_structures_larger_than_the_capacity_alone() -> None:
