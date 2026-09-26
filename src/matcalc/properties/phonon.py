@@ -15,6 +15,7 @@ import numpy as np
 from ase import Atoms
 from phonopy import Phonopy
 from phonopy.harmonic.dynmat_to_fc import DynmatToForceConstants
+from phonopy.phonon.thermal_properties import ThermalProperties
 from phonopy.units import Kb, THzToEv
 from pymatgen.io.phonopy import get_phonopy_structure
 
@@ -22,6 +23,9 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from pymatgen.core import Structure
+
+MESH_CHUNK_BYTES = 2**28
+"""Dynamical matrices held at once while the frequencies on the q-point mesh are computed (256 MiB)."""
 
 IMAGINARY_THRESHOLD_THZ = 50.0 * Kb / THzToEv
 """Frequencies below minus this (the frequency of 50 K, 1.04 THz) count as imaginary modes, as in the
@@ -126,8 +130,38 @@ def harmonic_properties(
     phonon.produce_force_constants(calculate_full_force_constants=False)
     commensurate = DynmatToForceConstants(phonon.primitive, phonon.supercell).commensurate_points
     phonon.run_qpoints(commensurate)
-    min_frequency = float(np.min(phonon.get_qpoints_dict()["frequencies"]))
-    phonon.run_mesh(list(mesh), with_eigenvectors=False)
-    phonon.run_thermal_properties(temperatures=[temperature])
-    heat_capacity = float(phonon.get_thermal_properties_dict()["heat_capacity"][0])
+    min_frequency = float(np.min(phonon.qpoints.frequencies))
+    thermal = ThermalProperties(_mesh_frequencies(phonon, mesh))  # phonopy's sums over the mesh
+    thermal.temperatures = [temperature]
+    thermal.run()
+    heat_capacity = float(thermal.thermal_properties[3][0])
     return HarmonicProperties(heat_capacity=heat_capacity, temperature=temperature, min_frequency=min_frequency)
+
+
+@dataclass
+class _MeshFrequencies:
+    """What phonopy's ``ThermalProperties`` reads from a mesh: frequencies (THz) and weights of the
+    irreducible q-points, and the position of Gamma among them.
+    """
+
+    frequencies: np.ndarray
+    weights: np.ndarray
+    gamma_index: int | None
+    dynamical_matrix: object  # only its primitive cell is read (for plots)
+
+
+def _mesh_frequencies(phonon: Phonopy, mesh: Sequence[int]) -> _MeshFrequencies:
+    """Frequencies on the irreducible q-points of a mesh, computed a few hundred q-points at a time.
+
+    phonopy's own mesh calculation builds the dynamical matrices of all q-points at once, which takes
+    several GB for a large low-symmetry primitive cell on a 20 x 20 x 20 mesh; the results are the same.
+    """
+    phonon.init_mesh(list(mesh), with_eigenvectors=False)  # q-points and weights only
+    grid = phonon.mesh
+    n_modes = 3 * len(phonon.primitive)
+    chunk = max(1, MESH_CHUNK_BYTES // (16 * n_modes**2))  # complex dynamical matrices of 16 bytes per entry
+    frequencies = []
+    for start in range(0, len(grid.qpoints), chunk):
+        phonon.run_qpoints(grid.qpoints[start : start + chunk])
+        frequencies.append(phonon.qpoints.frequencies)
+    return _MeshFrequencies(np.concatenate(frequencies), grid.weights, grid.gamma_index, phonon.dynamical_matrix)
