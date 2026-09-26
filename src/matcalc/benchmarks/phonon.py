@@ -1,11 +1,12 @@
 """Phonon benchmark: heat capacity C_V at 300 K of binary compounds vs DFT (Alexandria, PBE).
 
-Recipe (settings as in upstream matcalc):
+Recipe (settings as in upstream matcalc, except the supercell size):
 
 1. Relax atoms and cell (FIRE, fmax = 0.05 eV/Å, at most 5000 steps). As upstream, the relaxed
    structure is used even if the relaxation did not converge (``status`` says so).
-2. Build a phonopy supercell at least 20 Å long along each lattice vector and displace each
-   symmetry-distinct atom by 0.015 Å.
+2. Build a phonopy supercell at least 15 Å long along each lattice vector (upstream: 20 Å) and
+   displace each symmetry-distinct atom by 0.015 Å. For dynamically stable compounds C_V is converged
+   at 15 Å; see docs/validation.md.
 3. Forces on every displaced supercell (single points).
 4. Force constants → phonon frequencies on a q-point mesh → C_V(T) in the harmonic approximation.
    C_V at 300 K is compared, in J/(K·mol) per mole of primitive cells.
@@ -65,7 +66,7 @@ class PhononBenchmark(Benchmark):
         fmax: float = 0.05,
         max_steps: int = 5000,
         displacement: float = 0.015,
-        min_supercell_length: float = 20.0,
+        min_supercell_length: float = 15.0,
         symprec: float = 1e-5,
         temperature: float = 300.0,
         workers: int = 1,
@@ -78,7 +79,8 @@ class PhononBenchmark(Benchmark):
             fmax: Force threshold of the relaxation (eV/Å).
             max_steps: Maximum number of FIRE steps.
             displacement: Finite displacement of phonopy (Å).
-            min_supercell_length: Minimum supercell length along each lattice vector (Å).
+            min_supercell_length: Minimum supercell length along each lattice vector (Å); 20 reproduces
+                upstream matcalc.
             symprec: Symmetry tolerance of phonopy/spglib (Å).
             temperature: Temperature at which C_V is compared (K); must be a multiple of 10 K.
             workers: Processes for the phonopy step (see ``Benchmark``).

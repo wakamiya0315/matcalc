@@ -73,9 +73,14 @@ table = matcalc.PhononBenchmark(n_samples=20).run(simulator, "MACE")
   structure joining a running batch, the order in which FIRE's mixing parameter is updated, and ASE's
   convergence test (transformed atomic forces plus cell forces, checked before the first step too).
 - Single points are packed into batches by size; force-only single points (phonons, softening) skip the
-  stress.
-- The batch capacity is measured on the GPU (TorchSim's memory probe) and a call is retried with half the
-  capacity if the GPU runs out of memory.
+  stress. A structure larger than the batch capacity is evaluated on its own, and one that does not fit
+  on the GPU even alone gets no prediction (as with the ASE path).
+- The batch capacity is measured on the GPU (TorchSim's memory probe). When a batch runs out of memory the
+  capacity is lowered for the rest of the call; a relaxation is retried with half the capacity.
+- `SplitSimulator(relaxer, evaluator)` relaxes with one simulator and computes the single points with
+  another. `matcalc-bench --backend torchsim --fast-single-points` uses it to keep the relaxations in
+  float64 and compute the single points in float32 with cuEquivariance kernels, which makes the phonon
+  supercells 10–20× faster (accuracy in [docs/validation.md](docs/validation.md)).
 
 Agreement with the ASE path and wall times are reported in [docs/validation.md](docs/validation.md).
 
@@ -108,6 +113,13 @@ Removed: every calculator the benchmarks do not use (adsorption, EOS, grain boun
 LAMMPS, MD, NEB, order, phonon3, QHA, surfaces), `ChainedCalc`, the multi-provider model registry, the old
 CLI, example notebooks, the documentation site, and the classical-potential test files.
 
+Changed on purpose, affecting the numbers:
+
+- The Phonon supercells are at least 15 Å long along each lattice vector instead of 20 Å, which halves
+  the work. C_V changes only for compounds that are dynamically unstable with the MLIP (see
+  [docs/validation.md](docs/validation.md)); `PhononBenchmark(min_supercell_length=20)` or
+  `matcalc-bench --min-supercell-length 20` reproduces upstream.
+
 Changed on purpose (the numbers of a successful run are not affected):
 
 - The Equilibrium benchmark displaces the atoms with a generator seeded by `seed`; upstream used an
@@ -126,7 +138,7 @@ Kept on purpose, for comparability with published numbers:
 - Convergence of a relaxation is judged on the atomic forces only (not on the residual cell stress).
 - The Phonon benchmark uses the relaxed structure even if its relaxation did not converge, while the
   Elasticity and Equilibrium benchmarks give no prediction in that case.
-- The phonon supercell repeats the cell `ceil(20 Å / |a_i|)` times along each lattice vector, which leaves
+- The phonon supercell repeats the cell `ceil(L / |a_i|)` times along each lattice vector, which leaves
   some rhombohedral cells with 1×1×1 supercells only a few Å thick.
 - Equilibrium atoms are displaced by a random distance of at most 0.1 Å (pymatgen's `Structure.perturb`
   with `min_distance=0`), not by exactly 0.1 Å.

@@ -54,9 +54,14 @@ atoms).
 
 1. **Relaxation** of atoms and cell (0.05 eV/Å, at most 5000 steps). The relaxed structure is used even if
    the relaxation did not converge; `status` then reads `ok (relaxation not converged)`.
-2. **Displacements.** phonopy builds a supercell that repeats the cell `ceil(20 Å / |a_i|)` times along each
-   lattice vector a_i (median 512 atoms, up to 3,822 in this dataset) and displaces each symmetry-distinct
-   atom by 0.015 Å (`symprec` = 1e-5 Å). The dataset needs about 35,000 displaced supercells.
+2. **Displacements.** phonopy builds a supercell that repeats the cell `ceil(L / |a_i|)` times along each
+   lattice vector a_i and displaces each symmetry-distinct atom by 0.015 Å (`symprec` = 1e-5 Å); the
+   dataset needs about 35,000 displaced supercells. L = `min_supercell_length` is 15 Å (median 270 atoms,
+   up to 1,950); upstream matcalc uses 20 Å (median 512, up to 3,822), which `min_supercell_length=20`
+   reproduces. For compounds without imaginary modes C_V at 15 Å agrees with 20 Å (and with 25 Å) within
+   0.72 J/(K·mol); compounds that are dynamically unstable with the MLIP get a C_V that depends on the
+   supercell whatever its size, because phonopy leaves imaginary modes out of the thermal properties
+   ([validation](validation.md)). The DFT reference (Alexandria) used supercells of at least 12 Å.
 3. **Forces** on every displaced supercell (single points).
 4. **Thermal properties.** Force constants → phonon frequencies on phonopy's default q-point mesh →
    C_V(T) in the harmonic approximation, on a 0–1000 K grid in 10 K steps. `CV` is C_V at 300 K, in

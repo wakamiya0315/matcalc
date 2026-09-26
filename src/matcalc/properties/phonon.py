@@ -21,11 +21,12 @@ if TYPE_CHECKING:
     from pymatgen.core import Structure
 
 
-def make_phonopy(structure: Structure, *, min_supercell_length: float = 20.0, symprec: float = 1e-5) -> Phonopy:
+def make_phonopy(structure: Structure, *, min_supercell_length: float = 15.0, symprec: float = 1e-5) -> Phonopy:
     """Set up phonopy for a relaxed primitive cell.
 
     The supercell repeats the cell ``ceil(min_supercell_length / |a_i|)`` times along each lattice
-    vector a_i (upstream matcalc's rule; it uses vector lengths, not the distance between faces).
+    vector a_i (upstream matcalc's rule, with 20 Å; it uses vector lengths, not the distance between
+    faces).
 
     Args:
         structure: Relaxed primitive cell.
@@ -56,7 +57,7 @@ def displaced_supercells(phonon: Phonopy, *, displacement: float = 0.015) -> lis
     """
     phonon.generate_displacements(distance=displacement)
     # The same cells as phonopy's ``supercells_with_displacements``, built directly from the perfect
-    # supercell: much faster for large supercells.
+    # supercell (about twice as fast).
     supercell = phonon.supercell
     cells = []
     for entry in phonon.dataset["first_atoms"]:
