@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this fork is
 
 A fork of materialyzeai/matcalc reduced to the four benchmarks (Equilibrium, Elasticity, Phonon,
-Softening). `main` mirrors upstream and is never committed to; work happens on feature branches
-(`refactor/benchmark-core`, then `feature/torchsim` on top of it). Equilibrium, Elasticity and Softening
+Softening). `main` mirrors upstream and is never committed to; the work is on `feature/torchsim` (the
+refactoring and the TorchSim simulator). Equilibrium, Elasticity and Softening
 must give the same numbers as upstream unless a change is listed under "Changed on purpose" in
 `README.md`; the Phonon benchmark follows the protocol of its DFT reference (Alexandria, Loew et al. 2025),
 not upstream.
@@ -51,7 +51,9 @@ benchmark with MACE.
   identical to `ASESimulator`: the FIRE step wrapper (`ase_consistent_fire_step`), `ase_convergence` and
   `converged_before_relaxing` exist for that and are checked by `tests/test_simulation_torchsim.py` (same
   energies and step counts as ASE, with and without the symmetry constraint). The batch capacity is
-  measured on the GPU and cached; after running out of memory the capacity is lowered.
+  derived from TorchSim's memory probes of the smallest and the largest structure (cached), which bound
+  the memory of every structure of a call (`memory_shares`, `batch_capacity`); after running out of memory
+  the capacity is lowered.
 - CPU post-processing (phonopy, stress-strain fits, fingerprints) runs in a `worker_pool` of spawned
   processes (`pool_map`), overlapping with the GPU: single points are computed in parts
   (`split_into_parts`) and the CPU work of one part runs while the GPU computes the next. Scripts that use

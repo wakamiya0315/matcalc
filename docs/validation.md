@@ -87,7 +87,8 @@ fingerprint step).
 References: upstream `main` for Softening, Elasticity and Phonon; the refactored ASE path for Equilibrium
 (upstream crashes, see above). TorchSim runs use 4 worker processes for phonopy and fingerprints. Stage
 times of the TorchSim runs (s): Elasticity relax 149, strains 27, single points 164, fits 31; Equilibrium
-elemental references 240, relax 81, fingerprints 106 (ASE path: 831, 1,030, 467).
+elemental references 240, relax 81, fingerprints 106 (ASE path: 831, 1,030, 467). Section 6 gives the times
+of the final code.
 
 The upstream Phonon protocol needs the forces on 35,000 displaced supercells of up to 3,822 atoms (27
 million atoms); a supercell of several hundred atoms already keeps the GPU busy on its own, so batching gains
@@ -100,7 +101,7 @@ Errors against DFT are identical for both paths: Elasticity MAE K_vrh 18.50 GPa,
 (3,944 materials); Equilibrium MAE E_form 0.0891 eV/atom, mean d 0.308 (952 materials); Softening mean
 scale 0.928 (std 0.127); Phonon (upstream protocol) MAE C_V 13.13 J/(K·mol).
 
-## 5. Phonon on the protocol of the DFT reference (V10–V13)
+## 5. Phonon on the protocol of the DFT reference (V10–V16)
 
 ### 5.1 The reference
 
@@ -147,9 +148,9 @@ chunks of 20 compounds, 4 workers), one `gpu_h` slice each:
 | | Wall time | Relax | Displacements | Single points | phonopy (waiting) |
 |---|---|---|---|---|---|
 | ASE | 4,349 s | 2,951 s | 203 s | 1,065 s | 88 s |
-| `TorchSimSimulator` | **1,214 s** | 656 s | 19 s | 514 s | 25 s |
+| `TorchSimSimulator` | **1,205 s** | 651 s | 21 s | 508 s | 24 s |
 
-TorchSim is 3.6× faster than ASE on this protocol, and 5.8× faster than upstream's own Phonon benchmark
+TorchSim is 3.6× faster than ASE on this protocol, and 5.9× faster than upstream's own Phonon benchmark
 with ASE (7,070 s, section 4), which needed 8 times as many supercell atoms.
 
 **TorchSim vs ASE, compound by compound** (same code, runs V12): C_V within tolerance for 1,170/1,170
@@ -180,6 +181,39 @@ relaxations run next to the others: the last 60 compounds cost about 160 s of th
 smaller limit would save little time. The default stays at 5,000.
 
 ## 6. Where the time goes
+
+Final code, one `gpu_h` slice per benchmark, 3 worker processes (runs V16; wall time of the run without
+loading the dataset):
+
+| Benchmark | Wall time | Stages (s) | V5 code (section 4) |
+|---|---|---|---|
+| Softening | 27 s | single points 27 | 34 s |
+| Elasticity | 255 s | relax 119, strains 3, single points 131, fits 2 | 372 s |
+| Equilibrium | 302 s | elemental references 170, relax 54, fingerprints 77 | 427 s |
+| Phonon | 1,205 s | relax 651, displacements 21, single points 508, phonopy 24 | — |
+
+- **The GPU stages** (relaxations, single points) run at the throughput of the model: doubling the batch
+  capacity speeds single points up by only 3–9 %, and four times the capacity runs out of memory.
+- **Batch capacity.** TorchSim measures how many copies of the smallest and of the largest structure of a
+  call fit on the GPU and sizes every batch for the worse of the two. For the smallest structure that is
+  mostly a fixed cost per structure and per atom, which TorchSim's memory metric (atoms x density) leaves
+  out: one of the Equilibrium benchmark's elemental references, a single atom in 600 Å^3, held the batches
+  of all 769 references to 8,857 metric units, a tenth of what fits.
+  `TorchSimSimulator` turns the same two probes into an upper bound on the memory of each structure
+  (memory taken as linear in structures, atoms and metric) and uses the largest capacity with which no
+  batch of the call's structures can exceed the probed memory (`memory_shares` and `batch_capacity` in
+  `simulation/torchsim.py`). The references now relax with a capacity of 87,700 (219 → 170 s), the
+  compounds in 54 s instead of 68 s, and Elasticity's single points take 131 s instead of 144 s; Softening
+  and Phonon change by less than 10 s. No batch ran out of memory. The results agree with the previous runs:
+  Softening to 2e-14, Equilibrium E_form to 4e-12 eV/atom and d to 6e-13, Phonon C_V to 9e-4 J/(K·mol)
+  with the same stability for every compound, Elasticity K and G to 0.17 GPa (median 1e-12). One
+  Elasticity relaxation (mp-27954) is still moving when it reaches the 500-step limit; whether its largest
+  force is below fmax at that step differs from run to run, also between two runs of the same code.
+- **CPU work next to the GPU.** Elasticity builds the strained cells directly as ASE structures from one
+  set of 24 deformation gradients (2 s for 3,953 compounds instead of 27 s through pymatgen objects) and
+  runs the stress-strain fits in the worker processes while the GPU computes the next part of the single
+  points (31 → 2 s of waiting). Equilibrium computes the fingerprints of the DFT structures in the workers
+  while the GPU relaxes (fingerprint stage 106 → 77 s).
 
 Phonon (TorchSim, 1,170 compounds, one `gpu_h` slice):
 
