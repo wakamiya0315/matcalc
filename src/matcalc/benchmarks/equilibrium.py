@@ -9,6 +9,9 @@ Recipe (settings as in upstream matcalc):
    relaxation does not converge get no prediction.
 3. Formation energy E_form = (E - Σ_i n_i μ_i) / N (eV/atom).
 4. Distance d between the local-environment fingerprints of the MLIP- and the DFT-relaxed structure.
+
+The elemental references are relaxed after the first compounds: the fingerprints (CPU only) of those
+compounds are computed in the worker processes meanwhile.
 """
 
 from __future__ import annotations
@@ -39,7 +42,8 @@ class EquilibriumBenchmark(Benchmark):
         fmax: Force threshold of the relaxations (eV/Å).
         max_steps: Maximum number of FIRE steps per relaxation.
         perturb_distance: Largest distance an atom is moved before relaxing (Å); 0 or None to skip.
-        reference_energies: Chemical potential of each element (eV/atom), filled by ``prepare``.
+        reference_energies: Chemical potential of each element (eV/atom), filled by
+            ``relax_elemental_references``.
     """
 
     name = "equilibrium"
@@ -77,6 +81,7 @@ class EquilibriumBenchmark(Benchmark):
         self.max_steps = max_steps
         self.perturb_distance = perturb_distance
         self.reference_energies: dict[str, float] = {}
+        self._cache: dict[str, Any] = {}  # the checkpoint's, where the reference energies are kept
         self._dft_fingerprints: dict[str, np.ndarray | str] = {}
 
     def read_entries(self, raw: Any) -> list[Material]:
@@ -99,16 +104,24 @@ class EquilibriumBenchmark(Benchmark):
             for entry in raw
         ]
 
-    def prepare(self, simulator: Simulator, cache: dict[str, Any]) -> None:
+    def prepare(self, simulator: Simulator, cache: dict[str, Any]) -> None:  # noqa: ARG002
+        """Take the chemical potentials from the checkpoint of an earlier run, if it has them.
+
+        Otherwise the first ``evaluate`` computes them (``relax_elemental_references``).
+
+        Args:
+            simulator: The simulator of this run.
+            cache: Checkpoint cache; holds ``reference_energies`` once they are computed.
+        """
+        self._cache = cache
+        self.reference_energies = cache.get("reference_energies", {})
+
+    def relax_elemental_references(self, simulator: Simulator) -> None:
         """Step 1: chemical potential of every element (computed once, kept in the checkpoint).
 
         Args:
             simulator: The simulator of this run.
-            cache: Checkpoint cache; holds ``reference_energies`` after the first run.
         """
-        if "reference_energies" in cache:
-            self.reference_energies = cache["reference_energies"]
-            return
         elements = {element.symbol for m in self.materials for element in m.structure.composition.elements}
         candidates = [
             (element, structure)
@@ -122,10 +135,10 @@ class EquilibriumBenchmark(Benchmark):
             if result.structure is not None:  # as upstream, unconverged references are still used
                 energies_per_atom.setdefault(element, []).append(result.energy / len(result.structure))
         self.reference_energies = {element: min(values) for element, values in energies_per_atom.items()}
-        cache["reference_energies"] = self.reference_energies
+        self._cache["reference_energies"] = self.reference_energies
 
     def evaluate(self, materials: Sequence[Material], simulator: Simulator) -> list[dict[str, Any]]:
-        """Steps 2-4 for some compounds.
+        """Steps 2-4 for some compounds, and step 1 after the first ones.
 
         Args:
             materials: Compounds to evaluate.
@@ -148,16 +161,19 @@ class EquilibriumBenchmark(Benchmark):
             with self.stage("relax"):
                 starts = [self._displaced(material.structure) for material in materials]
                 relaxed = simulator.relax(starts, fmax=self.fmax, max_steps=self.max_steps)
+            # Fingerprints of the relaxed compounds, in the worker processes; the first time, while the GPU
+            # relaxes the elemental references.
+            done = [i for i, result in enumerate(relaxed) if result.structure is not None and result.converged]
+            fingerprints = pool_map(pool, structure_fingerprint_or_error, [relaxed[i].structure for i in done])
+            if "reference_energies" not in self._cache:
+                self.relax_elemental_references(simulator)
             predictions = [self._predict(result) for result in relaxed]
 
-            # Fingerprints need only the CPU; they are computed in parallel processes.
             with self.stage("fingerprints"):
-                done = [i for i, prediction in enumerate(predictions) if prediction["status"] == OK]
-                fingerprints = pool_map(
-                    pool, structure_fingerprint_or_error, [predictions[i]["structure"] for i in done]
-                )
                 self._dft_fingerprints.update(zip(new_dft, dft_fingerprints, strict=True))
                 for i, relaxed_fingerprint in zip(done, fingerprints, strict=True):
+                    if predictions[i]["status"] != OK:  # no reference energy for one of its elements
+                        continue
                     dft_fingerprint = self._dft_fingerprints[materials[i].material_id]
                     for fingerprint in (relaxed_fingerprint, dft_fingerprint):
                         if isinstance(fingerprint, str):  # the error message

@@ -189,7 +189,7 @@ loading the dataset):
 |---|---|---|---|
 | Softening | 27 s | single points 27 | 34 s |
 | Elasticity | 255 s | relax 119, strains 3, single points 131, fits 2 | 372 s |
-| Equilibrium | 302 s | elemental references 170, relax 54, fingerprints 77 | 427 s |
+| Equilibrium | 253 s | relax 83, elemental references 169, fingerprints 0 | 427 s |
 | Phonon | 1,205 s | relax 651, displacements 21, single points 508, phonopy 24 | — |
 
 - **The GPU stages** (relaxations, single points) run at the throughput of the model: doubling the batch
@@ -202,9 +202,9 @@ loading the dataset):
   `TorchSimSimulator` turns the same two probes into an upper bound on the memory of each structure
   (memory taken as linear in structures, atoms and metric) and uses the largest capacity with which no
   batch of the call's structures can exceed the probed memory (`memory_shares` and `batch_capacity` in
-  `simulation/torchsim.py`). The references now relax with a capacity of 87,700 (219 → 170 s), the
-  compounds in 54 s instead of 68 s, and Elasticity's single points take 131 s instead of 144 s; Softening
-  and Phonon change by less than 10 s. No batch ran out of memory. The results agree with the previous runs:
+  `simulation/torchsim.py`). The references now relax with a capacity of 87,700 (219 → 170 s) and
+  Elasticity's single points take 131 s instead of 144 s; Softening and Phonon change by less than 10 s.
+  No batch ran out of memory. The results agree with the previous runs:
   Softening to 2e-14, Equilibrium E_form to 4e-12 eV/atom and d to 6e-13, Phonon C_V to 9e-4 J/(K·mol)
   with the same stability for every compound, Elasticity K and G to 0.17 GPa (median 1e-12). One
   Elasticity relaxation (mp-27954) is still moving when it reaches the 500-step limit; whether its largest
@@ -213,7 +213,10 @@ loading the dataset):
   set of 24 deformation gradients (2 s for 3,953 compounds instead of 27 s through pymatgen objects) and
   runs the stress-strain fits in the worker processes while the GPU computes the next part of the single
   points (31 → 2 s of waiting). Equilibrium computes the fingerprints of the DFT structures in the workers
-  while the GPU relaxes (fingerprint stage 106 → 77 s).
+  while the GPU relaxes the compounds, and those of the relaxed compounds while it relaxes the elemental
+  references, which therefore come after the first compounds: the fingerprint stage went from 106 s to
+  nothing (E_form and d unchanged to 3e-12). The relaxation stage of the compounds includes TorchSim's
+  memory probes, now made separately for the compounds and for the references.
 
 Phonon (TorchSim, 1,170 compounds, one `gpu_h` slice):
 
