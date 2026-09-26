@@ -70,16 +70,20 @@ extracts the settings from Alexandria's phonopy files.
 3. **Forces** on every displaced supercell (single points).
 4. **Harmonic properties.** Compact force constants → frequencies on a 20 x 20 x 20 q-point mesh → C_V at
    300 K, in J/(K·mol) per mole of primitive cells. The compound is **dynamically stable** when no
-   frequency at the q-points commensurate with the supercell is below -50 K (-1.04 THz), the criterion of
-   the reference.
+   frequency below -50 K (-1.04 THz) appears at the q-points where the reference looked: the points
+   (n1/S1, n2/S2, n3/S3) of the (diagonal) supercell matrix S, taken, as in the reference's files, as
+   reduced coordinates of the primitive reciprocal lattice.
 
-174 compounds are dynamically unstable already in DFT (`stable_DFT` is false); phonopy leaves imaginary
-modes out of C_V, so for them the value depends on details of the calculation. `summarize` reports the
-errors over all compounds and over the 996 DFT-stable ones (`"CV (DFT-stable)"`), and a stability table
-(`TS`/`TU`: stable/unstable in both; `FU`: stable only in DFT; `FS`: stable only with the MLIP).
+`stable_DFT` is Alexandria's stability flag: 174 compounds are unstable already in DFT. phonopy leaves
+imaginary modes out of C_V, so for them the value depends on details of the calculation. The flag does not
+follow from a threshold on the DFT frequencies alone (the -50 K test on them reproduces it for about 90 %
+of the compounds), so `min_frequency_DFT` (the lowest DFT frequency at the same q-points) is given too.
+`summarize` reports the errors over all compounds and over the 996 DFT-stable ones (`"CV (DFT-stable)"`),
+and a stability table against `stable_DFT` (`TS`/`TU`: stable/unstable in both; `FU`: stable only in DFT;
+`FS`: stable only with the MLIP).
 
-Columns: `CV_DFT`, `stable_DFT`, `CV_<model>`, `stable_<model>`, `min_frequency_<model>` (lowest frequency
-at the commensurate q-points, THz; negative values are imaginary modes), `relax_steps_<model>`,
+Columns: `CV_DFT`, `stable_DFT`, `min_frequency_DFT`, `CV_<model>`, `stable_<model>`,
+`min_frequency_<model>` (THz; negative values are imaginary modes), `relax_steps_<model>`,
 `status_<model>`.
 
 ## Softening — `SofteningBenchmark` (`benchmarks/softening.py`)

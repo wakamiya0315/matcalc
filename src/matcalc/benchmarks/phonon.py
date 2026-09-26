@@ -68,7 +68,7 @@ class PhononBenchmark(Benchmark):
     name = "phonon"
     id_column = "mp_id"
     default_dataset = DATASET
-    reference_columns = ("CV", "stable")
+    reference_columns = ("CV", "stable", "min_frequency")
     summary_metrics: ClassVar[dict[str, str]] = {"CV": "error"}
     default_chunk_size = 20
 
@@ -121,7 +121,11 @@ class PhononBenchmark(Benchmark):
                 entry["mp_id"],
                 entry["formula"],
                 Structure(entry["lattice"], entry["species"], entry["frac_coords"]),
-                reference={"CV": entry["heat_capacity"], "stable": entry["stable"]},
+                reference={
+                    "CV": entry["heat_capacity"],
+                    "stable": entry["stable"],
+                    "min_frequency": entry["min_frequency"],
+                },
                 settings={
                     key: entry[key]
                     for key in ("supercell_matrix", "primitive_matrix", "displacements", "symprec", "space_group")

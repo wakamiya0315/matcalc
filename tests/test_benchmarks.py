@@ -76,6 +76,7 @@ def test_phonon(phonon_dataset: Path, emt_simulator: ASESimulator) -> None:
     table = benchmark.run(emt_simulator, "emt")
     assert list(table["status_emt"]) == ["ok", "ok"]
     assert list(table["stable_DFT"]) == [True, False]
+    assert "min_frequency_DFT" in table.columns
     heat_capacity = table.loc[0, "CV_emt"]
     assert 0.8 * 3 * R_GAS < heat_capacity < 3 * R_GAS  # one atom per primitive cell: below Dulong-Petit
     assert table.loc[0, "stable_emt"]  # fcc Cu is dynamically stable

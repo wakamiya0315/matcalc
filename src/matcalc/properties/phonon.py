@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from ase import Atoms
 from phonopy import Phonopy
-from phonopy.harmonic.dynmat_to_fc import DynmatToForceConstants
+from phonopy.harmonic.dynmat_to_fc import get_commensurate_points
 from phonopy.phonon.thermal_properties import ThermalProperties
 from phonopy.units import Kb, THzToEv
 from pymatgen.io.phonopy import get_phonopy_structure
@@ -45,7 +45,8 @@ def make_phonopy(
         unit_cell: The (relaxed) unit cell.
         supercell_matrix: Supercell lattice vectors in units of the unit cell's (phonopy's convention).
         primitive_matrix: Primitive lattice vectors in units of the unit cell's; ``None`` if the unit cell
-            is primitive. Thermal properties are per mole of primitive cells.
+            is primitive (phonopy 4 would otherwise search for a primitive cell). Thermal properties are
+            per mole of primitive cells.
         symprec: Symmetry tolerance of phonopy/spglib (Å).
 
     Returns:
@@ -54,7 +55,7 @@ def make_phonopy(
     return Phonopy(
         get_phonopy_structure(unit_cell),
         supercell_matrix=np.asarray(supercell_matrix, dtype=int),
-        primitive_matrix=None if primitive_matrix is None else np.asarray(primitive_matrix, dtype=float),
+        primitive_matrix="P" if primitive_matrix is None else np.asarray(primitive_matrix, dtype=float),
         symprec=symprec,
     )
 
@@ -91,7 +92,7 @@ class HarmonicProperties:
         heat_capacity: Constant-volume heat capacity C_V at ``temperature`` (J/(K·mol) per mole of
             primitive cells).
         temperature: Temperature (K).
-        min_frequency: Lowest phonon frequency at the q-points commensurate with the supercell (THz);
+        min_frequency: Lowest phonon frequency at the stability q-points of ``stability_qpoints`` (THz);
             negative values are imaginary modes.
     """
 
@@ -101,7 +102,7 @@ class HarmonicProperties:
 
     @property
     def dynamically_stable(self) -> bool:
-        """No imaginary mode below -50 K (``IMAGINARY_THRESHOLD_THZ``) at the commensurate q-points."""
+        """No imaginary mode below -50 K (``IMAGINARY_THRESHOLD_THZ``) at the stability q-points."""
         return self.min_frequency >= -IMAGINARY_THRESHOLD_THZ
 
 
@@ -124,18 +125,36 @@ def harmonic_properties(
         mesh: q-point mesh for the heat capacity (the reference used 20 x 20 x 20).
 
     Returns:
-        The heat capacity and the lowest frequency at the q-points commensurate with the supercell.
+        The heat capacity and the lowest frequency at the stability q-points.
     """
     phonon.forces = forces
     phonon.produce_force_constants(calculate_full_force_constants=False)
-    commensurate = DynmatToForceConstants(phonon.primitive, phonon.supercell).commensurate_points
-    phonon.run_qpoints(commensurate)
+    phonon.run_qpoints(stability_qpoints(phonon))
     min_frequency = float(np.min(phonon.qpoints.frequencies))
     thermal = ThermalProperties(_mesh_frequencies(phonon, mesh))  # phonopy's sums over the mesh
     thermal.temperatures = [temperature]
     thermal.run()
     heat_capacity = float(thermal.thermal_properties[3][0])
     return HarmonicProperties(heat_capacity=heat_capacity, temperature=temperature, min_frequency=min_frequency)
+
+
+def stability_qpoints(phonon: Phonopy) -> np.ndarray:
+    """The q-points at which the reference judges dynamical stability, in phonopy's primitive basis.
+
+    These are the points commensurate with the supercell matrix in units of the unit cell (for a
+    diagonal matrix ``S``: all ``(n1/S1, n2/S2, n3/S3)``), used, as in the reference's calculation, as
+    reduced coordinates of the primitive reciprocal lattice. For a unit cell that is not primitive this
+    is not exactly the set of q-points commensurate with the supercell, but it reproduces the
+    frequencies stored with the DFT reference (96 % of those compounds within 0.05 THz, against 31 % for
+    the transformed points).
+
+    Args:
+        phonon: Phonopy object from ``make_phonopy``.
+
+    Returns:
+        The q-points, shape ``(n, 3)``.
+    """
+    return get_commensurate_points(np.rint(phonon.supercell_matrix).astype(int))
 
 
 @dataclass

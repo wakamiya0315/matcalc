@@ -29,6 +29,7 @@ from pathlib import Path
 import yaml
 
 TEMPERATURE = 300.0
+LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
 def _sections(text: str) -> dict[str, str]:
@@ -55,6 +56,8 @@ def read_compound(path: Path) -> dict:
         )
     ]
     phonopy_info = _load(parts["phonopy"])
+    # Frequencies (THz) at the q-points where the reference judged dynamical stability
+    min_frequency = min(min(row) for row in yaml.load(parts["phonon_freq"], Loader=LOADER)["phonon_freq"])
     return {
         "lattice": unit_cell["lattice"],
         "species": [point["symbol"] for point in unit_cell["points"]],
@@ -63,6 +66,7 @@ def read_compound(path: Path) -> dict:
         "primitive_matrix": _load(parts["primitive_matrix"]) if "primitive_matrix" in parts else None,
         "displacements": displacements,
         "heat_capacity": _load(parts["heat_capacity"])[temperatures.index(TEMPERATURE)],
+        "min_frequency": float(min_frequency),
         "space_group": _load(parts["space_group"])["number"],
         "symprec": phonopy_info["symmetry_tolerance"],
         "phonopy_version": phonopy_info["version"],
@@ -84,7 +88,8 @@ def main() -> None:
             "Phonon benchmark: 1,170 binary compounds with the settings and results of the Alexandria PBE "
             "phonon calculations (phonopy): unit cell, supercell matrix, primitive matrix, displacements "
             "(0-based supercell atom index and vector in Angstrom), heat capacity at 300 K in J/(K mol) "
-            "per mole of primitive cells, and dynamical stability."
+            "per mole of primitive cells, lowest frequency (THz) at the q-points of the stability test, and "
+            "the dynamical stability flag of Alexandria."
         ),
         "source": "https://alexandria.icams.rub.de/data/phonon_benchmark/pbe/",
         "license": "CC BY 4.0",

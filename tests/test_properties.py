@@ -16,6 +16,7 @@ from matcalc.properties.phonon import (
     displaced_supercells,
     harmonic_properties,
     make_phonopy,
+    stability_qpoints,
 )
 from matcalc.properties.softening import softening_scale
 
@@ -103,3 +104,10 @@ def test_imaginary_modes_below_minus_50_kelvin_mean_unstable() -> None:
     assert pytest.approx(1.0418, abs=1e-4) == IMAGINARY_THRESHOLD_THZ
     assert HarmonicProperties(20.0, 300.0, min_frequency=-1.0).dynamically_stable
     assert not HarmonicProperties(20.0, 300.0, min_frequency=-1.1).dynamically_stable
+
+
+def test_stability_qpoints_are_those_of_the_reference() -> None:
+    """(n1/S1, n2/S2, n3/S3) for a diagonal supercell matrix S, as reduced coordinates."""
+    qpoints = stability_qpoints(make_phonopy(structure("Cu"), [[2, 0, 0], [0, 2, 0], [0, 0, 1]], FCC_PRIMITIVE))
+    assert len(qpoints) == 4
+    assert {tuple(np.round(q % 1, 6)) for q in qpoints} == {(0, 0, 0), (0.5, 0, 0), (0, 0.5, 0), (0.5, 0.5, 0)}

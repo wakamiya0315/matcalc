@@ -69,6 +69,7 @@ def phonon_entry(
         "symprec": 1e-5,
         "space_group": phonon.symmetry.dataset.number,
         "heat_capacity": heat_capacity,
+        "min_frequency": 0.0,
         "stable": stable,
     }
 
