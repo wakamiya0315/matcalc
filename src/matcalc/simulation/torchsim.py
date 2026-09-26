@@ -155,6 +155,105 @@ def converged_before_relaxing(structure: Structure | Atoms, start: SinglePointRe
     return bool(largest < fmax)
 
 
+class BatchedFixSymmetry(FixSymmetry):
+    """TorchSim's ``FixSymmetry`` constraint with all structures of a batch symmetrized at once.
+
+    TorchSim symmetrizes forces, displacements, stress and cell steps structure by structure in Python,
+    which costs about a third of a relaxation step for a batch of a hundred small cells. This subclass does
+    the same arithmetic for the whole batch in a few tensor operations: every (symmetry operation, atom)
+    pair of every structure is gathered, rotated and scatter-added at once. Results agree with
+    ``FixSymmetry`` to rounding.
+    """
+
+    def _batch_indices(self, state: Any) -> dict[str, torch.Tensor]:
+        """Index tensors of all (operation, atom) pairs, built once for a batch layout."""
+        cached = getattr(self, "_indices", None)
+        if cached is not None and cached["n_atoms"] == state.n_atoms and cached["device"] == state.device:
+            return cached
+        device = state.device
+        counts = state.n_atoms_per_system.tolist()  # one transfer from the GPU
+        offsets = [sum(counts[:i]) for i in range(len(counts))]
+        rotations, op_structure, sources, targets, pair_ops, n_ops = [], [], [], [], [], []
+        ops_of_atom = torch.ones(state.n_atoms, device=device, dtype=torch.long)
+        constrained = torch.zeros(state.n_atoms, device=device, dtype=torch.bool)
+        ops_so_far = 0
+        for ci, si in enumerate(self.system_idx.tolist()):
+            symm_map = self.symm_maps[ci].to(device)  # (n_ops, n_atoms): image of each atom under each op
+            k, n = symm_map.shape
+            offset = offsets[si]
+            rotations.append(self.rotations[ci].to(device))
+            op_structure.append(torch.full((k,), ci, device=device))
+            sources.append(offset + torch.arange(n, device=device).repeat(k))
+            targets.append(offset + symm_map.reshape(-1))
+            pair_ops.append(ops_so_far + torch.arange(k, device=device).repeat_interleave(n))
+            ops_of_atom[offset : offset + n] = k
+            constrained[offset : offset + n] = True
+            n_ops.append(k)
+            ops_so_far += k
+        systems = self.system_idx.to(device)
+        n_ops_t = torch.tensor(n_ops, device=device)
+        self._indices = {
+            "n_atoms": state.n_atoms,
+            "device": device,
+            "systems": systems,
+            "rotations": torch.cat(rotations),
+            "op_structure": torch.cat(op_structure),
+            "sources": torch.cat(sources),
+            "targets": torch.cat(targets),
+            "pair_ops": torch.cat(pair_ops),
+            "n_ops": n_ops_t,
+            "ops_of_atom": ops_of_atom,
+            "constrained": constrained,
+        }
+        return self._indices
+
+    def _symmetrize_rank1(self, state: Any, vectors: torch.Tensor) -> None:
+        """Symmetrize per-atom vectors (forces, displacements) of every constrained structure in place."""
+        index = self._batch_indices(state)
+        lattice = state.row_vector_cell[state.system_idx]  # (n_atoms, 3, 3), rows = lattice vectors
+        scaled = torch.einsum("ai,aij->aj", vectors, torch.linalg.inv(lattice))
+        rotations = index["rotations"].to(vectors.dtype)[index["pair_ops"]]
+        rotated = torch.einsum("pj,pkj->pk", scaled[index["sources"]], rotations)  # scaled @ R^T
+        accumulated = torch.zeros_like(vectors).index_add_(0, index["targets"], rotated)
+        averaged = accumulated / index["ops_of_atom"].to(vectors.dtype).unsqueeze(-1)
+        symmetric = torch.einsum("ai,aij->aj", averaged, lattice)
+        mask = index["constrained"]
+        vectors[mask] = symmetric[mask]
+
+    def _symmetrize_rank2(self, lattice: torch.Tensor, tensors: torch.Tensor, index: dict) -> torch.Tensor:
+        """Symmetrize one rank-2 tensor per constrained structure (``lattice``: their cells as rows)."""
+        rotations = index["rotations"].to(tensors.dtype)
+        scaled = lattice @ tensors @ lattice.mT
+        per_op = rotations.mT @ scaled[index["op_structure"]] @ rotations  # R^T S R for every operation
+        summed = torch.zeros_like(scaled).index_add_(0, index["op_structure"], per_op)
+        averaged = summed / index["n_ops"].to(tensors.dtype)[:, None, None]
+        inverse = torch.linalg.inv(lattice)
+        return inverse @ averaged @ inverse.mT
+
+    def adjust_stress(self, state: Any, stress: torch.Tensor) -> None:
+        """Symmetrize the stress of every constrained structure in place."""
+        index = self._batch_indices(state)
+        systems = index["systems"]
+        stress[systems] = self._symmetrize_rank2(state.row_vector_cell[systems], stress[systems], index)
+
+    def adjust_cell(self, state: Any, cell: torch.Tensor, max_delta_component: float = 0.25) -> None:
+        """Symmetrize the step of every constrained cell in place, as ``FixSymmetry.adjust_cell``."""
+        if not self.do_adjust_cell:
+            return
+        index = self._batch_indices(state)
+        systems = index["systems"]
+        identity = torch.eye(3, device=state.device, dtype=state.dtype)
+        current = state.row_vector_cell[systems]
+        delta = torch.linalg.solve(current, cell[systems].mT) - identity
+        largest = delta.abs().amax(dim=(1, 2))
+        if not bool(torch.isfinite(largest).all()):
+            raise RuntimeError("FixSymmetry: deformation gradient is not finite; a cell may be singular.")
+        # Large steps are shrunk before symmetrization, like TorchSim and ASE do.
+        scale = torch.where(largest > max_delta_component, max_delta_component / largest, torch.ones_like(largest))
+        delta = delta * scale[:, None, None]
+        cell[systems] = (current @ (self._symmetrize_rank2(current, delta, index) + identity)).mT
+
+
 class TorchSimSimulator:
     """Evaluate many structures per GPU forward pass with TorchSim.
 
@@ -220,7 +319,8 @@ class TorchSimSimulator:
             fmax: FIRE stops when every force on atoms and cell is below this (eV/Å).
             max_steps: FIRE gives up after this many steps.
             fix_symmetry: Keep the space group of each structure with TorchSim's ``FixSymmetry``
-                constraint (the counterpart of ASE's; needs ``moyopy``).
+                constraint (the counterpart of ASE's; needs ``moyopy``), applied to the whole batch at once
+                (``BatchedFixSymmetry``).
             symprec: Symmetry tolerance used to find the space group (Å).
 
         Returns:
@@ -251,7 +351,7 @@ class TorchSimSimulator:
     ) -> list[SinglePointResult]:
         """Forces and stress symmetrized like the constraint does, for the test before the first step."""
         state = self._state(structures)
-        constraint = FixSymmetry.from_state(state, symprec=symprec, refine_symmetry_state=False)
+        constraint = BatchedFixSymmetry.from_state(state, symprec=symprec, refine_symmetry_state=False)
         good = [r.error is None and r.forces is not None and r.stress is not None for r in results]
         forces = torch.cat(
             [
@@ -278,7 +378,7 @@ class TorchSimSimulator:
     ) -> list[RelaxResult]:
         state = self._state(structures)
         if fix_symmetry:
-            state.constraints = [FixSymmetry.from_state(state, symprec=symprec, refine_symmetry_state=False)]
+            state.constraints = [BatchedFixSymmetry.from_state(state, symprec=symprec, refine_symmetry_state=False)]
 
         def optimize(capacity: float) -> tuple[Any, Any]:
             batcher = ts.InFlightAutoBatcher(

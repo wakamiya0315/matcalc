@@ -269,3 +269,34 @@ def test_symmetric_relaxation_matches_ase() -> None:
         assert got.energy == pytest.approx(ref.energy, abs=1e-8)
         assert_allclose(got.structure.lattice.abc, ref.structure.lattice.abc, atol=1e-6)
         assert got.structure.get_space_group_info() == start.get_space_group_info()
+
+
+def test_batched_symmetry_constraint_equals_torchsims() -> None:
+    pytest.importorskip("moyopy")
+    from torch_sim.constraints import FixSymmetry
+
+    from matcalc.simulation.torchsim import BatchedFixSymmetry
+
+    cells = [*symmetric_starts(), structure("Cu"), rattled("NiAl", 4)]  # the last one has no symmetry
+    state = TorchSimSimulator(lj_model(), show_progress=False)._state(cells)
+    reference = FixSymmetry.from_state(state, symprec=0.01, refine_symmetry_state=False)
+    batched = BatchedFixSymmetry.from_state(state, symprec=0.01, refine_symmetry_state=False)
+    generator = torch.Generator().manual_seed(0)
+
+    forces = torch.randn(state.positions.shape, generator=generator, dtype=state.dtype)
+    expected, got = forces.clone(), forces.clone()
+    reference.adjust_forces(state, expected)
+    batched.adjust_forces(state, got)
+    assert_allclose(got.numpy(), expected.numpy(), atol=1e-12)
+
+    stress = torch.randn((state.n_systems, 3, 3), generator=generator, dtype=state.dtype)
+    expected, got = stress.clone(), stress.clone()
+    reference.adjust_stress(state, expected)
+    batched.adjust_stress(state, got)
+    assert_allclose(got.numpy(), expected.numpy(), atol=1e-12)
+
+    cell = state.cell + 0.02 * torch.randn(state.cell.shape, generator=generator, dtype=state.dtype)
+    expected, got = cell.clone(), cell.clone()
+    reference.adjust_cell(state, expected)
+    batched.adjust_cell(state, got)
+    assert_allclose(got.numpy(), expected.numpy(), atol=1e-12)
