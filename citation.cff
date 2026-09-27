@@ -33,8 +33,8 @@ authors:
     website: https://github.com/JiQi535
   - given-names: Shyue Ping
     family-names: Ong
-    email: ongsp@ucsd.edu
-    affiliation: University of California, San Diego
+    email: shyue@nus.edu.sg
+    affiliation: National University of Singapore
     orcid: https://orcid.org/0000-0001-5726-2587
     website: https://github.com/shyuep
   - given-names: Tsz Wai
@@ -84,8 +84,8 @@ preferred-citation:
       website: https://github.com/JiQi535
     - given-names: Shyue Ping
       family-names: Ong
-      email: ongsp@ucsd.edu
-      affiliation: University of California, San Diego
+      email: shyue@nus.edu.sg
+      affiliation: National University of Singapore
       orcid: https://orcid.org/0000-0001-5726-2587
       website: https://github.com/shyuep
     - given-names: Tsz Wai
