@@ -14,9 +14,11 @@ from matcalc.properties.phonon import (
     IMAGINARY_THRESHOLD_THZ,
     HarmonicProperties,
     displaced_supercells,
+    generated_displacements,
     harmonic_properties,
     make_phonopy,
     stability_qpoints,
+    undisplaced_supercell,
 )
 from matcalc.properties.softening import softening_scale
 
@@ -98,6 +100,52 @@ def test_compact_force_constants_give_the_same_heat_capacity() -> None:
     assert harmonic.heat_capacity == pytest.approx(full.get_thermal_properties_dict()["heat_capacity"][0], rel=1e-8)
     assert 0.9 * 3 * 8.314 < harmonic.heat_capacity < 3 * 8.314  # one atom per primitive cell
     assert harmonic.dynamically_stable
+
+
+def test_displacements_without_symmetry_go_both_ways_along_the_lattice_for_every_primitive_atom() -> None:
+    unit_cell = structure("NiAl")  # B2: two atoms, primitive
+    supercell = [[2, 0, 0], [0, 2, 0], [0, 0, 2]]
+    rows = generated_displacements(make_phonopy(unit_cell, supercell, use_symmetry=False), 0.01, plus_minus=True)
+    assert len(rows) == 6 * len(unit_cell)
+    assert len({row[0] for row in rows}) == len(unit_cell)
+    vectors = np.array([row[1:4] for row in rows])
+    assert_allclose(np.linalg.norm(vectors, axis=1), 0.01)
+    assert_allclose(vectors[0::2], -vectors[1::2])  # each displacement is followed by its opposite
+    assert len(generated_displacements(make_phonopy(unit_cell, supercell), 0.01)) == 2  # one per atom
+
+
+def test_without_symmetry_the_forces_left_on_the_relaxed_cell_cancel() -> None:
+    """Forces that the relaxed cell keeps and that do not follow its symmetry (as an SO(3)-equivariant MLIP
+    can leave on a cell relaxed under a symmetry constraint) cancel in the central differences without
+    symmetry, while phonopy's symmetric construction takes them for a response to the displacement, unless
+    the forces on the undisplaced supercell are subtracted."""
+    calc = EMT()
+    unit_cell = structure("NiAl")
+    supercell = [[3, 0, 0], [0, 3, 0], [0, 0, 3]]
+
+    def heat_capacity(*, use_symmetry: bool, residual: float, subtract: bool = False) -> float:
+        phonon = make_phonopy(unit_cell, supercell, use_symmetry=use_symmetry)
+        rows = generated_displacements(phonon, 0.01, plus_minus=True if not use_symmetry else "auto")
+        cells = displaced_supercells(phonon, rows)
+        if subtract:
+            cells.append(undisplaced_supercell(phonon))
+        # the same force on every atom of a sublattice, opposite on the two (no net force), along [111]: its
+        # projection on the displacement is what the symmetric construction cannot tell from a response
+        left = np.outer(np.where(phonon.supercell.numbers == 28, residual, -residual), [1.0, 1.0, 1.0]) / np.sqrt(3)
+        forces = []
+        for atoms in cells:
+            atoms.calc = calc
+            forces.append(atoms.get_forces() + left)
+        if subtract:
+            *forces, on_undisplaced = forces
+            forces = [f - on_undisplaced for f in forces]
+        return harmonic_properties(phonon, forces, mesh=(8, 8, 8)).heat_capacity
+
+    exact = heat_capacity(use_symmetry=False, residual=0.0)
+    assert heat_capacity(use_symmetry=True, residual=0.0) == pytest.approx(exact, rel=1e-6)
+    assert heat_capacity(use_symmetry=False, residual=0.01) == pytest.approx(exact, rel=1e-9)
+    assert abs(heat_capacity(use_symmetry=True, residual=0.01) - exact) > 0.1  # J/(K mol)
+    assert heat_capacity(use_symmetry=True, residual=0.01, subtract=True) == pytest.approx(exact, rel=1e-6)
 
 
 def test_imaginary_modes_below_minus_50_kelvin_mean_unstable() -> None:

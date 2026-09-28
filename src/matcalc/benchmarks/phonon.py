@@ -8,14 +8,32 @@ Comput. Mater. 2025, doi:10.1038/s41524-025-01650-1; data from Alexandria, CC BY
    not converge within ``max_steps`` gets no prediction (``status`` says so).
 2. Build the supercells of the DFT calculation: the same supercell and primitive matrices, and the same
    displaced atoms and displacements (0.01 Å).
-3. Forces on every displaced supercell (single points).
-4. Force constants → phonon frequencies on a 20 x 20 x 20 q-point mesh → C_V at 300 K in the harmonic
-   approximation, in J/(K·mol) per mole of primitive cells. The compound counts as dynamically stable
-   when no frequency at the q-points commensurate with the supercell is below -50 K (-1.04 THz), the
-   criterion of the reference.
+3. Forces on every displaced supercell and on the undisplaced one (single points).
+4. Force constants from the forces of the displaced supercells minus those of the undisplaced one →
+   phonon frequencies on a 20 x 20 x 20 q-point mesh → C_V at 300 K in the harmonic approximation, in
+   J/(K·mol) per mole of primitive cells. The compound counts as dynamically stable when no frequency at
+   the q-points commensurate with the supercell is below -50 K (-1.04 THz), the criterion of the
+   reference.
 
 174 of the 1,170 compounds are dynamically unstable in DFT itself (``stable_DFT``); ``summarize`` also
 reports the errors over the DFT-stable compounds only.
+
+Steps 2-4 use the crystal's symmetry as the DFT calculation did, which is exact for MLIPs whose forces
+transform with every operation of the space group, inversion and mirrors included (O(3)-equivariant
+models). For MLIPs whose forces change under inversion or mirrors (SO(3)-equivariant or non-equivariant
+models) it fails in two ways (``matcalc.properties.phonon``):
+
+- the forces left on the relaxed cell do not follow its symmetry and would be read as a response to the
+  displacements. Step 4 subtracts them (``subtract_residual_forces``); for an O(3)-equivariant MLIP this
+  changes nothing, since phonopy's symmetrization cancels a residual that follows the symmetry. The
+  largest of them is reported as ``residual_force`` (eV/Å);
+- phonopy completes and copies the displacement-force pairs with inversion and mirrors, which such a model
+  does not obey. ``use_symmetry=False`` avoids this: phonopy then uses the lattice translations only, every
+  atom of the primitive cell is displaced by plus and minus the DFT's amplitude along the three lattice
+  directions, and the force constants are solved without symmetry (six supercells per atom of the
+  primitive cell, about four times as many as the DFT's).
+
+The relaxation keeps the space group in all cases, as in the reference.
 """
 
 from __future__ import annotations
@@ -34,6 +52,7 @@ from matcalc.properties.phonon import (
     generated_displacements,
     harmonic_properties,
     make_phonopy,
+    undisplaced_supercell,
 )
 
 from ._common import OK, Benchmark, Material, failed, pool_map, split_into_parts, worker_pool
@@ -42,6 +61,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ase import Atoms
+    from phonopy import Phonopy
 
     from matcalc.simulation import Simulator
 
@@ -57,7 +77,8 @@ class PhononBenchmark(Benchmark):
     """Heat capacity ``CV`` (J/(K·mol)) at 300 K and dynamical stability of binary compounds.
 
     Columns besides ``CV``: ``stable`` (no imaginary mode below -50 K at the commensurate q-points),
-    ``min_frequency`` (the lowest frequency there, THz) and ``relax_steps``.
+    ``min_frequency`` (the lowest frequency there, THz), ``relax_steps`` and, with
+    ``subtract_residual_forces``, ``residual_force`` (the largest force on the undisplaced supercell, eV/Å).
 
     Attributes:
         fmax: Force threshold of the relaxation (eV/Å).
@@ -67,6 +88,11 @@ class PhononBenchmark(Benchmark):
             structures would get a higher one at ASE's default of 0.01 Å).
         temperature: Temperature of the heat capacity (K).
         mesh: q-point mesh of the heat capacity.
+        use_symmetry: Build the force constants with the crystal's symmetry from the DFT's displacements
+            (``True``, the reference's protocol), or without symmetry from plus and minus displacements of
+            every atom of the primitive cell (``False``, exact for MLIPs that are not O(3)-invariant).
+        subtract_residual_forces: Subtract the forces on the undisplaced supercell from those of the
+            displaced ones (``True``; ``False`` reproduces the benchmark before 2026-09-28).
     """
 
     name = "phonon"
@@ -87,6 +113,8 @@ class PhononBenchmark(Benchmark):
         symprec: float = 1e-5,
         temperature: float = 300.0,
         mesh: tuple[int, int, int] = (20, 20, 20),
+        use_symmetry: bool = True,
+        subtract_residual_forces: bool = True,
         workers: int = 1,
     ) -> None:
         """
@@ -100,6 +128,10 @@ class PhononBenchmark(Benchmark):
             symprec: Symmetry tolerance of the symmetry constraint during the relaxation (Å).
             temperature: Temperature of the heat capacity (K).
             mesh: q-point mesh of the heat capacity.
+            use_symmetry: Use the crystal's symmetry in phonopy (see the module docstring); ``False`` for
+                an exact result with MLIPs that are not O(3)-invariant.
+            subtract_residual_forces: Subtract the forces on the undisplaced supercell (see the module
+                docstring).
             workers: Processes for the phonopy steps (see ``Benchmark``).
         """
         super().__init__(dataset, n_samples=n_samples, seed=seed, workers=workers)
@@ -108,6 +140,17 @@ class PhononBenchmark(Benchmark):
         self.symprec = symprec
         self.temperature = temperature
         self.mesh = mesh
+        self.use_symmetry = use_symmetry
+        self.subtract_residual_forces = subtract_residual_forces
+
+    def run_settings(self) -> dict[str, str]:
+        """How the force constants are built, unless as before 2026-09-28 (checkpoints of then resume).
+
+        Returns:
+            Setting name → value, kept in the checkpoint so that a run is not resumed with other settings.
+        """
+        settings = {"residual_forces": "subtracted"} if self.subtract_residual_forces else {}
+        return settings | ({} if self.use_symmetry else {"use_symmetry": "False"})
 
     def read_entries(self, raw: Any) -> list[Material]:
         """Read the compounds and the settings of their DFT phonon calculations.
@@ -146,8 +189,8 @@ class PhononBenchmark(Benchmark):
             simulator: The simulator of this run.
 
         Returns:
-            Per compound: ``CV`` (J/(K·mol)), ``stable``, ``min_frequency`` (THz), ``status`` and
-            ``relax_steps``.
+            Per compound: ``CV`` (J/(K·mol)), ``stable``, ``min_frequency`` (THz), ``status``,
+            ``relax_steps`` and, with ``subtract_residual_forces``, ``residual_force`` (eV/Å).
         """
         with self.stage("relax"):
             relaxed = simulator.relax(
@@ -159,7 +202,15 @@ class PhononBenchmark(Benchmark):
             )
 
         jobs = {
-            i: PhononJob(result.structure, [], **material.settings, temperature=self.temperature, mesh=self.mesh)
+            i: PhononJob(
+                result.structure,
+                [],
+                **material.settings,
+                temperature=self.temperature,
+                mesh=self.mesh,
+                use_symmetry=self.use_symmetry,
+                subtract_residual_forces=self.subtract_residual_forces,
+            )
             for i, (material, result) in enumerate(zip(materials, relaxed, strict=True))
             if result.optimizer_converged and result.structure is not None
         }
@@ -186,6 +237,7 @@ class PhononBenchmark(Benchmark):
             # The forces are computed part by part; the phonopy step of a part (force constants and
             # frequencies, CPU only) runs in the worker processes while the GPU computes the next part.
             pending = []
+            residual: dict[int, float] = {}  # largest force on the undisplaced supercell
             for part in split_into_parts(todo, [sum(len(c) for c in supercells[i]) for i in todo]):
                 with self.stage("single points"):
                     forces = iter(
@@ -197,8 +249,13 @@ class PhononBenchmark(Benchmark):
                     errors = [r.error or "no forces" for r in own if r.error is not None or r.forces is None]
                     if errors:
                         predictions[i] = failed(f"single point failed: {errors[0]}", QUANTITIES)
-                    else:
-                        ready.append((i, replace(jobs[i], forces=[r.forces for r in own if r.forces is not None])))
+                        continue
+                    displaced = [r.forces for r in own if r.forces is not None]
+                    if self.subtract_residual_forces:  # the undisplaced supercell comes last
+                        *displaced, left = displaced
+                        residual[i] = float(np.linalg.norm(left, axis=1).max())
+                        displaced = [f - left for f in displaced]
+                    ready.append((i, replace(jobs[i], forces=displaced)))
                 with self.stage("phonopy"):  # only the time the GPU waits for the CPU
                     pending.append(
                         ([i for i, _ in ready], pool_map(pool, harmonic_properties_of, [j for _, j in ready]))
@@ -214,7 +271,7 @@ class PhononBenchmark(Benchmark):
                             "stable": harmonic.dynamically_stable,
                             "min_frequency": harmonic.min_frequency,
                             "status": OK + notes[i],
-                        }
+                        } | ({"residual_force": residual[i]} if i in residual else {})
         return [
             prediction | {"relax_steps": result.n_steps}
             for prediction, result in zip(predictions, relaxed, strict=True)
@@ -229,10 +286,13 @@ class PhononBenchmark(Benchmark):
 
         Returns:
             ``Benchmark.summarize`` plus ``"CV (DFT-stable)"`` (MAE and STDAE over the compounds that are
-            dynamically stable in DFT) and ``"stability"``: counts of compounds stable in both (TS),
-            unstable in both (TU), and stable in only DFT (FU) or only the MLIP (FS).
+            dynamically stable in DFT), ``"stability"``: counts of compounds stable in both (TS),
+            unstable in both (TU), and stable in only DFT (FU) or only the MLIP (FS), and the settings
+            ``"use_symmetry"`` and ``"subtract_residual_forces"``.
         """
         summary = super().summarize(table, model_name)
+        summary["use_symmetry"] = self.use_symmetry
+        summary["subtract_residual_forces"] = self.subtract_residual_forces
         dft_stable = table[table["stable_DFT"].astype(bool)]
         errors = (
             (pd.to_numeric(dft_stable[f"CV_{model_name}"], errors="coerce") - pd.to_numeric(dft_stable["CV_DFT"]))
@@ -267,6 +327,9 @@ class PhononJob:
         space_group: Space group number of the DFT structure.
         temperature: Temperature of the heat capacity (K).
         mesh: q-point mesh of the heat capacity.
+        use_symmetry: Use the crystal's symmetry in phonopy (see ``PhononBenchmark``).
+        subtract_residual_forces: The displaced supercells are followed by the undisplaced one, whose
+            forces are subtracted (see ``PhononBenchmark``).
     """
 
     structure: Structure
@@ -278,34 +341,52 @@ class PhononJob:
     space_group: int
     temperature: float
     mesh: tuple[int, int, int]
+    use_symmetry: bool = True
+    subtract_residual_forces: bool = True
+
+    def phonopy(self) -> Phonopy:
+        """The phonopy object of the relaxed cell, with the DFT's matrices and this job's use of symmetry."""
+        return make_phonopy(
+            self.structure,
+            self.supercell_matrix,
+            self.primitive_matrix,
+            symprec=self.symprec,
+            use_symmetry=self.use_symmetry,
+        )
 
 
 def displaced_supercells_of(job: PhononJob) -> tuple[list[Atoms], list[list[float]], str] | str:
     """Set up phonopy for one compound and build its displaced supercells.
 
-    The displacements of the DFT calculation match the symmetry of the DFT structure. The relaxation keeps
-    that space group (symmetry constraint with the DFT's tolerance); should phonopy find another one in the
-    relaxed structure (it can only become higher), phonopy generates displacements for it anew, with the
-    same amplitude.
+    With symmetry, the displacements of the DFT calculation match the symmetry of the DFT structure. The
+    relaxation keeps that space group (symmetry constraint with the DFT's tolerance); should phonopy find
+    another one in the relaxed structure (it can only become higher), phonopy generates displacements for
+    it anew, with the same amplitude. Without symmetry, phonopy generates plus and minus displacements of
+    every atom of the primitive cell along the three lattice directions, with the DFT's amplitude.
 
     Args:
         job: Relaxed cell and phonopy settings of one compound (``forces`` is not used).
 
     Returns:
-        The displaced supercells, the displacements used, and a note for ``status`` ("" normally); or why
-        phonopy failed.
+        The displaced supercells (followed by the undisplaced one with ``subtract_residual_forces``), the
+        displacements used, and a note for ``status`` ("" normally); or why phonopy failed.
     """
     try:
-        phonon = make_phonopy(job.structure, job.supercell_matrix, job.primitive_matrix, symprec=job.symprec)
+        phonon = job.phonopy()
+        amplitude = float(np.linalg.norm(job.displacements[0][1:4]))
         displacements, note = job.displacements, ""
-        found = getattr(phonon.symmetry.dataset, "number", None)  # spglib's space group number
-        if found != job.space_group:
-            amplitude = float(np.linalg.norm(job.displacements[0][1:4]))
+        if not job.use_symmetry:
+            displacements = generated_displacements(phonon, amplitude, plus_minus=True)
+        elif (found := getattr(phonon.symmetry.dataset, "number", None)) != job.space_group:
+            # spglib's space group number differs from the DFT's
             displacements = generated_displacements(phonon, amplitude)
             note = f" (space group {job.space_group} -> {found}; displacements generated by phonopy)"
-        return displaced_supercells(phonon, displacements), displacements, note
+        cells = displaced_supercells(phonon, displacements)
+        if job.subtract_residual_forces:
+            cells.append(undisplaced_supercell(phonon))
     except Exception as exc:  # noqa: BLE001 - one compound must not stop the benchmark
         return f"phonopy failed: {type(exc).__name__}: {exc}"
+    return cells, displacements, note
 
 
 def harmonic_properties_of(job: PhononJob) -> HarmonicProperties | str:
@@ -318,7 +399,7 @@ def harmonic_properties_of(job: PhononJob) -> HarmonicProperties | str:
         Its harmonic properties, or why phonopy failed.
     """
     try:
-        phonon = make_phonopy(job.structure, job.supercell_matrix, job.primitive_matrix, symprec=job.symprec)
+        phonon = job.phonopy()
         displaced_supercells(phonon, job.displacements)
         return harmonic_properties(phonon, job.forces, temperature=job.temperature, mesh=job.mesh)
     except Exception as exc:  # noqa: BLE001 - one compound must not stop the benchmark

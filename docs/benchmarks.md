@@ -67,12 +67,35 @@ extracts the settings from Alexandria's phonopy files.
 2. **Displacements.** phonopy with the supercell matrix (diagonal, on the conventional cell; supercells of
    24–180 atoms, median 108) and the primitive matrix of the DFT calculation, and with the same displaced
    atoms and displacements (0.01 Å): 36,407 displaced supercells in total, the same cells as in DFT.
-3. **Forces** on every displaced supercell (single points).
-4. **Harmonic properties.** Compact force constants → frequencies on a 20 x 20 x 20 q-point mesh → C_V at
-   300 K, in J/(K·mol) per mole of primitive cells. The compound is **dynamically stable** when no
+3. **Forces** on every displaced supercell and on the undisplaced one (single points).
+4. **Harmonic properties.** Compact force constants from the forces of the displaced supercells minus those
+   of the undisplaced one → frequencies on a 20 x 20 x 20 q-point mesh → C_V at 300 K, in J/(K·mol) per
+   mole of primitive cells. The compound is **dynamically stable** when no
    frequency below -50 K (-1.04 THz) appears at the q-points where the reference looked: the points
    (n1/S1, n2/S2, n3/S3) of the (diagonal) supercell matrix S, taken, as in the reference's files, as
    reduced coordinates of the primitive reciprocal lattice.
+
+**Symmetry.** Steps 2–4 use the crystal's symmetry, as the DFT calculation did: phonopy displaces only
+symmetry-inequivalent atoms, completes the displacement–force pairs with the site symmetry of the displaced
+atom and copies the force constants to equivalent atoms with the space group. Its point operations include
+inversion and mirrors, so this is exact only for an MLIP whose forces transform with all of them, as DFT
+forces and those of O(3)-equivariant MLIPs do. An SO(3)-equivariant or non-equivariant MLIP breaks it in two
+ways ([docs/validation.md](validation.md#53-mlips-that-are-not-o3-invariant-v17)):
+
+- The forces it leaves on the relaxed cell do not follow the cell's symmetry (the symmetry constraint of the
+  relaxation symmetrizes the forces, so the relaxation stops on their symmetric part), and phonopy would
+  read them as a response to the displacements. Step 4 subtracts them (`subtract_residual_forces=True`,
+  the default since 2026-09-28; for an O(3)-equivariant MLIP it changes nothing, since phonopy's
+  symmetrization cancels a residual that follows the symmetry). The largest of these forces is reported as
+  `residual_force_<model>` (eV/Å).
+- Its forces change under inversion and mirrors, so the pairs that phonopy completes with them are not
+  the model's. `use_symmetry=False` avoids this: phonopy then uses the lattice translations only (they hold
+  for any MLIP), every atom of the primitive cell is displaced by ±0.01 Å along the three lattice
+  directions, and the force constants are solved without symmetry (six supercells per atom of the primitive
+  cell, 141,300 supercells instead of 36,407). This is exact for any MLIP.
+
+The relaxation keeps the space group in every case, as in the reference. The summary records both settings,
+and a checkpoint is not resumed with other settings.
 
 `stable_DFT` is Alexandria's stability flag: 174 compounds are unstable already in DFT. phonopy leaves
 imaginary modes out of C_V, so for them the value depends on details of the calculation. The flag does not
@@ -83,8 +106,8 @@ and a stability table against `stable_DFT` (`TS`/`TU`: stable/unstable in both; 
 `FS`: stable only with the MLIP).
 
 Columns: `CV_DFT`, `stable_DFT`, `min_frequency_DFT`, `CV_<model>`, `stable_<model>`,
-`min_frequency_<model>` (THz; negative values are imaginary modes), `relax_steps_<model>`,
-`status_<model>`.
+`min_frequency_<model>` (THz; negative values are imaginary modes), `residual_force_<model>` (eV/Å),
+`relax_steps_<model>`, `status_<model>`.
 
 ## Softening — `SofteningBenchmark` (`benchmarks/softening.py`)
 
