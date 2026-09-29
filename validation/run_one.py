@@ -12,7 +12,7 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("code", choices=["upstream", "fork-ase", "fork-torchsim"])
-    parser.add_argument("benchmark", choices=["equilibrium", "elasticity", "phonon", "softening", "discovery", "kappa"])
+    parser.add_argument("benchmark", choices=["equilibrium", "elasticity", "phonon", "softening", "discovery", "kappa", "diatomics"])
     parser.add_argument("--model", default="mace-matpes-pbe-0", help="MACE checkpoint (medium = MACE-MP-0)")
     parser.add_argument("--n-samples", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)

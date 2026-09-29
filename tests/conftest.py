@@ -232,3 +232,31 @@ def softening_dataset(tmp_path: Path) -> Path:
     path = tmp_path / "softening.json.gz"
     dumpfn({"t-Cu": frames}, path)
     return path
+
+
+@pytest.fixture
+def diatomics_dataset(tmp_path: Path) -> Path:
+    """EMT curves of Al2 and Cu2 as the "PBE" reference (40 separations from 0.8 r_cov to 6 Å, as in Matbench
+    Discovery's grid), and a Ni2 curve with ±1 eV steps that is too rough to score against."""
+    import gzip
+    import json
+
+    from ase.data import atomic_numbers, covalent_radii
+
+    from matcalc.properties.diatomics import dimers
+
+    curves = {}
+    for element in ("Al", "Cu", "Ni"):
+        distances = np.geomspace(0.8 * covalent_radii[atomic_numbers[element]], 6.0, 40)
+        energies, forces = [], []
+        for atoms in dimers(element, distances):
+            atoms.calc = EMT()
+            energies.append(atoms.get_potential_energy())
+            forces.append(atoms.get_forces().tolist())
+        if element == "Ni":
+            energies = [e + (1.0 if k % 2 else 0.0) for k, e in enumerate(energies)]
+        curves[f"{element}-{element}"] = {"distances": distances.tolist(), "energies": energies, "forces": forces}
+    path = tmp_path / "diatomics-dft.json.gz"
+    with gzip.open(path, "wt") as f:
+        json.dump({"PBE": curves, "r2SCAN": {}}, f)
+    return path

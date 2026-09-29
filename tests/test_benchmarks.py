@@ -265,3 +265,38 @@ def test_settings_that_change_the_results_are_kept_in_the_checkpoint(
     assert DiscoveryBenchmark(discovery_dataset, fmax=0.02).run_settings() == {"fmax": "0.02"}
     assert KappaBenchmark(kappa_dataset).run_settings() == {}
     assert KappaBenchmark(kappa_dataset, temperature=500.0).run_settings() == {"temperature": "500.0"}
+
+
+def test_diatomics(diatomics_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from matcalc import DiatomicsBenchmark
+
+    benchmark = DiatomicsBenchmark(diatomics_dataset)
+    assert [m.material_id for m in benchmark.materials] == ["Al", "Ni", "Cu"]
+    assert benchmark.rough_references == {"Ni"}
+    table = benchmark.run(emt_simulator, "emt").set_index("element")
+    assert (table["status_emt"] == "ok").all()
+    # EMT against its own curves: the errors come only from the different separations of the two grids.
+    for element in ("Al", "Cu"):
+        assert table.loc[element, "pbe_energy_mae_emt"] < 0.02
+        assert table.loc[element, "pbe_bond_length_error_emt"] < 0.02
+        assert table.loc[element, "pbe_wall_dist_mae_emt"] < 0.005
+    assert table["tortuosity_emt"].tolist() == pytest.approx([1.0, 1.0, 1.0])
+    assert table["force_flips_emt"].tolist() == [1.0, 1.0, 1.0]
+    assert np.isnan(table.loc["Ni", "pbe_energy_mae_emt"])  # rough reference: smoothness metrics only
+    summary = benchmark.summarize(table.reset_index(), "emt")
+    assert summary["pbe_energy_mae"] == pytest.approx(table.loc[["Al", "Cu"], "pbe_energy_mae_emt"].mean())
+    assert summary["pbe_vib_freq_coverage"] == {"n_valid": 2, "n_eligible": 2}
+
+
+def test_diatomics_curve_with_non_finite_scored_points_gets_no_metrics(diatomics_dataset: Path) -> None:
+    from matcalc import DiatomicsBenchmark
+    from matcalc.properties.diatomics import DIMER_DISTANCES
+
+    benchmark = DiatomicsBenchmark(diatomics_dataset)
+    material = benchmark.materials[0]
+    energies = 1.0 / DIMER_DISTANCES**2
+    forces = np.zeros((len(DIMER_DISTANCES), 2, 3))
+    energies[0] = np.nan  # 0.1 Å, below the scored range: left out
+    assert benchmark._metrics(material, energies, forces)["status"] == "ok"
+    energies[90] = np.nan  # 2.3 Å, inside it
+    assert benchmark._metrics(material, energies, forces)["status"].startswith("non-finite")
