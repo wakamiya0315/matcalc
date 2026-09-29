@@ -22,8 +22,10 @@ Recipe (Matbench Discovery's protocol "phonondb-v1"):
    mode-resolved symmetric relative mean error (SRME); their means over the crystals are κ_SRD, κ_SRE and
    κ_SRME.
 
-Needs phono3py (extra ``kappa``). phono3py parallelizes its C code with OpenMP: set ``OMP_NUM_THREADS``
-so that ``workers`` x threads fits the CPU cores.
+Needs phono3py (extra ``kappa``). The conductivity (phono3py's phonon-phonon interaction, on the CPU) takes
+almost all of the time: it scales with the cores given to ``workers`` x threads. phono3py >= 4.7 computes it
+with its Rust backend, whose threads are set by ``RAYON_NUM_THREADS`` (``OMP_NUM_THREADS`` sets those of its C
+code); set both so that ``workers`` x threads fits the cores.
 """
 
 from __future__ import annotations

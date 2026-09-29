@@ -31,7 +31,7 @@ Discovery and Kappa with MACE-MP-0, compared with Matbench Discovery's files (Fi
 PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim discovery --model medium --n-samples 10000 --workers 3 \
     --out discovery.csv --checkpoint discovery.ckpt.json.gz
 python matbench_discovery_check.py discovery discovery.csv mace-mp-0-2023-12-11-discovery.csv.gz
-OMP_NUM_THREADS=2 PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim kappa --model medium --workers 2 --out kappa.csv
+OMP_NUM_THREADS=2 RAYON_NUM_THREADS=2 PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim kappa --model medium --workers 2 --out kappa.csv
 python matbench_discovery_check.py kappa kappa.csv mace-mp-0-2024-11-09-phonons-kappa-103.json.gz \
     2024-11-09-kappas-phononDB-PBE-noNAC.json.gz
 ```
