@@ -111,7 +111,9 @@ def test_phonon_residual_forces_change_nothing_for_an_o3_invariant_potential(
     benchmark = PhononBenchmark(phonon_dataset, subtract_residual_forces=False)
     table = benchmark.run(emt_simulator, "emt")
     np.testing.assert_allclose(table["CV_emt"], subtracted["CV_emt"], rtol=1e-9)
-    np.testing.assert_allclose(table["min_frequency_emt"], subtracted["min_frequency_emt"], atol=1e-6)
+    # The first compound's lowest frequency is an acoustic mode at Γ: zero up to a few 1e-6 THz of numerical
+    # noise, whose sign and size depend on the platform and the phonopy version.
+    np.testing.assert_allclose(table["min_frequency_emt"], subtracted["min_frequency_emt"], atol=1e-4)
     assert "residual_force_emt" not in table.columns
     assert benchmark.summarize(table, "emt")["subtract_residual_forces"] is False
 
