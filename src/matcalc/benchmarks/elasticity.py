@@ -26,7 +26,7 @@ from matcalc.properties.elasticity import (
     strained_structures,
 )
 
-from ._common import OK, Benchmark, Material, failed, pool_map, split_into_parts, worker_pool
+from ._common import OK, Benchmark, Material, failed, pool_map, split_into_parts
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -137,7 +137,7 @@ class ElasticityBenchmark(Benchmark):
         todo = sorted(cells)
         # The stresses are computed part by part; the fits of a part (CPU only) run in the worker
         # processes while the GPU computes the next part.
-        with worker_pool(self.workers) as pool:
+        with self.worker_pool() as pool:
             pending = []
             for part in split_into_parts(todo, [sum(len(c) for c in cells[i]) for i in todo]):
                 with self.stage("single points"):

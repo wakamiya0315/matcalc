@@ -14,6 +14,7 @@ import pytest
 from ase.build import bulk
 from ase.calculators.emt import EMT
 from monty.serialization import dumpfn
+from pymatgen.entries.computed_entries import ComputedStructureEntry
 from pymatgen.io.ase import AseAtomsAdaptor
 
 from matcalc import ASESimulator
@@ -82,6 +83,130 @@ def equilibrium_dataset(tmp_path: Path) -> Path:
     ]
     path = tmp_path / "equilibrium.json.gz"
     dumpfn(entries, path)
+    return path
+
+
+DISCOVERY_ENTRIES = (
+    # id, formula, e_form DFT, e_above_hull DFT, MP2020 correction per atom, unique prototype
+    ("wbm-t-1", "Cu", 0.0, 0.0, 0.0, True),
+    ("wbm-t-2", "Cu3Au", -0.07, -0.01, 0.0, True),
+    ("wbm-t-3", "CuAu", -0.02, 0.04, -0.01, True),
+    ("wbm-t-4", "NiAl", -0.60, 0.02, 0.0, False),
+)
+"""Made-up DFT values of the tiny Discovery dataset."""
+
+
+@pytest.fixture
+def discovery_dataset(tmp_path: Path) -> Path:
+    """The Matbench Discovery files for four EMT crystals: rattled and strained starts, EMT-relaxed "DFT"."""
+    import gzip
+    import json
+
+    import pandas as pd
+
+    moyopy = pytest.importorskip("moyopy")
+    from moyopy.interface import MoyoAdapter
+
+    from matcalc.benchmarks.discovery import WBM_FILES
+
+    rows, initial, relaxed = [], [], []
+    for k, (material_id, formula, e_form, e_hull, correction, unique) in enumerate(DISCOVERY_ENTRIES):
+        dft = structure(formula)
+        start = dft.copy()
+        start.perturb(0.1, seed=k)
+        start.scale_lattice(start.volume * 1.04)
+        initial.append({"material_id": material_id, "initial_structure": start.as_dict()})
+        entry = ComputedStructureEntry(dft, 0.0).as_dict()
+        relaxed.append({"material_id": material_id, "computed_structure_entry": entry})
+        rows.append(
+            {
+                "material_id": material_id,
+                "formula": formula,
+                "n_sites": len(dft),
+                "e_correction_per_atom_mp2020": correction,
+                "e_form_per_atom_mp2020_corrected": e_form,
+                "e_above_hull_mp2020_corrected_ppd_mp": e_hull,
+                "unique_prototype": unique,
+            }
+        )
+    pd.DataFrame(rows).to_csv(tmp_path / WBM_FILES["summary"].name, index=False)
+    for key, entries in (("initial_structures", initial), ("dft_entries", relaxed)):
+        with gzip.open(tmp_path / WBM_FILES[key].name, "wt") as f:
+            f.writelines(json.dumps(entry) + "\n" for entry in entries)
+    references = {}
+    for element in ("Cu", "Au", "Ni", "Al"):
+        atoms = bulk(element, "fcc", a={"Cu": 3.61, "Au": 4.08, "Ni": 3.52, "Al": 4.05}[element])
+        atoms.calc = EMT()
+        references[element] = {"energy": atoms.get_potential_energy(), "composition": {element: 1.0}}
+    with gzip.open(tmp_path / WBM_FILES["elemental_references"].name, "wt") as f:
+        json.dump(references, f)
+    for key, symprec in (("dft_symmetry_1e-5", 1e-5), ("dft_symmetry_1e-2", 1e-2)):
+        symmetry = []
+        for row in rows:
+            data = moyopy.MoyoDataset(MoyoAdapter.from_py_obj(structure(row["formula"])), symprec=symprec)
+            symmetry.append(
+                {"material_id": row["material_id"], "spg_num": data.number, "n_sym_ops": data.operations.num_operations}
+            )
+        pd.DataFrame(symmetry).to_csv(tmp_path / WBM_FILES[key].name, index=False)
+    return tmp_path
+
+
+@pytest.fixture
+def kappa_dataset(tmp_path: Path) -> Path:
+    """fcc Cu relaxed with EMT, whose EMT conductivity is the "DFT" reference.
+
+    A second copy claims the wrong space group, so the benchmark must censor it.
+    """
+    pytest.importorskip("phono3py")
+    from ase.constraints import FixSymmetry
+    from ase.filters import FrechetCellFilter
+    from ase.optimize import FIRE
+
+    from matcalc.properties.thermal_conductivity import (
+        fc2_supercells,
+        fc3_supercells,
+        harmonic_frequencies,
+        make_phono3py,
+        thermal_conductivity,
+    )
+
+    cell = bulk("Cu", "fcc", a=3.6, cubic=True)
+    cell.calc = EMT()
+    cell.set_constraint(FixSymmetry(cell))
+    FIRE(FrechetCellFilter(cell), logfile=None).run(fmax=1e-6, steps=500)
+    cell.set_constraint()
+    settings = {
+        "fc2_supercell": [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+        "fc3_supercell": [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
+        "q_point_mesh": [9, 9, 9],
+    }
+    phono3py = make_phono3py(cell, settings["fc2_supercell"], settings["fc3_supercell"], settings["q_point_mesh"])
+
+    def forces(supercells: list) -> list:
+        out = []
+        for atoms in supercells:
+            atoms.calc = EMT()
+            out.append(atoms.get_forces())
+        return out
+
+    harmonic_frequencies(phono3py, forces(fc2_supercells(phono3py)))
+    conductivity = thermal_conductivity(phono3py, forces(fc3_supercells(phono3py)))
+    entries = [
+        {
+            "mp_id": material_id,
+            "formula": "Cu",
+            "space_group": space_group,
+            "lattice": cell.cell[:].tolist(),
+            "species": cell.get_chemical_symbols(),
+            "positions": cell.positions.tolist(),
+            **settings,
+            "kappa": conductivity.kappa_average,
+            "mode_kappa": conductivity.mode_kappa.tolist(),
+        }
+        for material_id, space_group in (("mp-t-1", 225), ("mp-t-2", 221))
+    ]
+    path = tmp_path / "kappa.json.gz"
+    dumpfn({"entries": entries}, path)
     return path
 
 

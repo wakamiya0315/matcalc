@@ -1,8 +1,9 @@
-# The four benchmarks
+# The benchmarks
 
-All four compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data: the
+All six compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data: the
 Hugging Face dataset [`materialyze/matcalc-bench`](https://huggingface.co/datasets/materialyze/matcalc-bench)
-(Equilibrium, Elasticity, Softening) and the packaged Phonon dataset.
+(Equilibrium, Elasticity, Softening), the packaged Phonon and Kappa datasets, and Matbench Discovery's WBM
+files (Discovery).
 Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å³; moduli are reported in GPa.
 
 Every benchmark is a sequence of stages over *all* materials of a chunk, and only two operations touch the
@@ -10,7 +11,9 @@ MLIP: `relax` and `single_point` of a simulator (`src/matcalc/simulation/`). Rel
 optimizer on a Frechet cell filter, so atomic positions and the cell relax together. In Equilibrium and
 Elasticity a relaxation counts as converged when the largest force on any atom is at most `fmax` (the
 residual cell stress is not checked, as in upstream matcalc); the Phonon benchmark requires FIRE's own
-criterion, every force on the atoms and on the cell below `fmax`.
+criterion, every force on the atoms and on the cell below `fmax`. Discovery and Kappa, like Matbench
+Discovery, keep the prediction of a relaxation that reaches its step limit (Discovery notes it in the
+status).
 
 `n_samples` and `seed` select a random subset (`random.Random(seed).sample`, the same subset upstream
 matcalc draws with that seed).
@@ -97,3 +100,74 @@ Dataset: `wbm-high-energy-states.json.gz`, 979 WBM materials with up to 10 high-
    are systematically weaker than DFT's, i.e. its potential energy surface is too soft.
 
 Columns: `softening_scale_<model>`, `status_<model>`. Summary: mean and std of `softening_scale`.
+
+## Discovery — `DiscoveryBenchmark` (`benchmarks/discovery.py`)
+
+Dataset: Matbench Discovery's WBM files on Figshare (article 22715158, CC BY 4.0, about 150 MB, downloaded
+into the cache on first use): 256,963 hypothetical crystals made by element substitution into known
+prototypes (H.-C. Wang et al., npj Comput. Mater. 7, 12 (2021)) and relaxed with PBE (+U) in the Materials
+Project setup; 215,488 of them have a prototype that is not in the Materials Project ("unique prototypes").
+Reference: J. Riebesell et al., Nat. Mach. Intell. 7, 836 (2025).
+
+1. **Relaxation** of every unrelaxed structure (FIRE on a Frechet cell filter, 0.05 eV/Å, at most 500
+   steps). As in Matbench Discovery, a relaxation that reaches the step limit still gives a prediction.
+2. **Formation energy.** E_form = (E − Σ_i n_i μ_i)/N + ΔE_MP2020, with the Materials Project elemental
+   references μ_i and the MP2020 correction per atom of the relaxed structure, as in Matbench Discovery.
+   The correction depends on the structure only through the oxide type (oxide, peroxide, superoxide,
+   ozonide; from the O–O and O–H distances) and the sulfide type; where the relaxation changes one of them,
+   the difference between the corrections of the relaxed and the DFT structure (both computed with the
+   installed pymatgen) is added to the published correction of the WBM DFT entry. Recomputing the whole
+   correction instead would change it for 1.4 % of the entries relative to the published DFT values with
+   pymatgen 2026.9, which classifies some anions (Te, Se, Si, H, Cl) differently (matbench-discovery issue
+   #358). The model's energies must be on the scale of Materials Project PBE/PBE+U calculations (as those
+   of MPtrj-trained models are).
+3. **Distance to the convex hull.** E_hull = E_hull(DFT) + E_form − E_form(DFT); the hull of the Materials
+   Project phases stays fixed. A crystal counts as stable at E_hull ≤ 0.
+4. **Geometry.** RMSD between the relaxed and the DFT-relaxed structure (pymatgen `StructureMatcher` with
+   stol = 1, normalized by (volume per atom)^(1/3); 1 when the structures do not match) and the space group
+   and number of symmetry operations (moyopy) at 1e-5 and 1e-2 Å, compared with those of the DFT structures
+   published with the data.
+
+Columns: `e_form_per_atom_DFT`, `e_above_hull_DFT`, `spg_num_1e-5_DFT` etc., `unique_prototype`, and per
+model `e_form_per_atom`, `e_above_hull`, `rmsd`, `spg_num_1e-5`, `n_sym_ops_1e-5`, `spg_num_1e-2`,
+`n_sym_ops_1e-2`, `relax_steps`, `status`. Summary (`summarize`): for all crystals and for the unique
+prototypes, F1, DAF (precision over the fraction of stable crystals), precision, recall, accuracy, the
+confusion counts, and MAE, RMSE and R² of E_hull, with Matbench Discovery's conventions (predictions more
+than 5 eV/atom off count as missing, missing ones as unstable, energies rounded to 1 meV/atom, the DAF of
+the unique prototypes divided by their unrounded fraction of stable crystals); and per tolerance, the mean
+RMSD, the MAE of the number of symmetry operations and the fractions of structures whose symmetry
+decreased, matched or increased.
+
+## Kappa — `KappaBenchmark` (`benchmarks/kappa.py`)
+
+Dataset: `data/phonondb-pbe-kappa.json.gz` (packaged; built by `scripts/build_kappa_dataset.py`, CC BY 4.0):
+the 103 rock-salt, zinc-blende and wurtzite crystals of Matbench Discovery's κ_SRME task (B. Póta et al.,
+arXiv:2408.00755) with their PBE unit cells, the FC2 and FC3 supercells and q-point meshes of PhononDB, and
+their PBE conductivity at 300 K. The reference is recomputed from PhononDB's PBE force sets (A. Togo,
+L. Chaput, I. Tanaka, Phys. Rev. B 91, 094306 (2015); MDR at NIMS) with the functions the benchmark uses
+for the MLIP, so reference and prediction share the phono3py solver (see below).
+
+1. **Relaxation** keeping the space group (FIRE on a Frechet cell filter with the symmetry constraint at
+   0.01 Å, 1e-4 eV/Å, at most 300 steps). Matbench Discovery forbids cell tilts; for these cubic and
+   hexagonal cells the symmetrized cell step has none anyway.
+2. **Harmonic force constants** from the displaced FC2 supercells (0.01 Å, phono3py's displacements) and the
+   frequencies on the q-point mesh. A crystal with imaginary modes (below 0, or below −0.01 THz for the
+   acoustic modes at Γ), or whose space group (1e-5 Å) changed in the relaxation, gets no conductivity.
+3. **Third-order force constants** from the displaced FC3 supercells and the lattice thermal conductivity:
+   Wigner transport equation (Simoncelli, Marzari, Mauri 2019) in the relaxation-time approximation with
+   isotope scattering, particle-like plus coherence conductivity, symmetrized force constants.
+4. **Errors.** SRD = 2 (κ − κ_DFT)/(κ + κ_DFT) and SRE = |SRD| for κ = the mean of the diagonal; the
+   mode-resolved SRME = 2 Σ_modes |κ_mode − κ_DFT,mode| / Σ_q w_q / (κ + κ_DFT), where the coherence between
+   two bands is shared between them in proportion to their heat capacities. Crystals without a conductivity
+   count as SRME = SRE = 2 and SRD = −2.
+
+Matbench Discovery pins phono3py 3.30, whose Wigner solver ("MS-SMM19") phono3py 4 replaced ("SMM19") and
+which needs phonopy 3.5, while the rest of this package needs phonopy 4. On PhononDB's PBE force sets the
+two solvers give conductivities that differ by 0.3 % on average, and by up to 3.4 % for halides whose
+coherence conductivity is large (their particle-like parts agree within 0.3 %; see `docs/validation.md`),
+which is why the reference is recomputed with the solver that the benchmark uses. phono3py parallelizes
+with OpenMP: set `OMP_NUM_THREADS` so that `workers` × threads fits the CPU cores.
+
+Columns: `kappa_DFT`, and per model `kappa`, `srd`, `sre`, `srme`, `relax_steps`, `status` (`ok` or
+`censored: <reason>`). Summary: κ_SRME, κ_SRE, κ_SRD (means over the crystals), the failure rate and the rate
+of imaginary modes.

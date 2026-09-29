@@ -1,7 +1,9 @@
 # MatCalc benchmarks (fork)
 
 This is a fork of [materialyzeai/matcalc](https://github.com/materialyzeai/matcalc) reduced to its
-four benchmarks for machine-learning interatomic potentials (MLIPs):
+four benchmarks for machine-learning interatomic potentials (MLIPs), plus two tasks of
+[Matbench Discovery](https://matbench-discovery.materialsproject.org) that need only relaxations and
+single points as well:
 
 | Benchmark | Compared with DFT (PBE) | Dataset |
 |---|---|---|
@@ -9,6 +11,8 @@ four benchmarks for machine-learning interatomic potentials (MLIPs):
 | Elasticity | bulk and shear moduli `K_vrh`, `G_vrh` (GPa) | 3,953 binary compounds (Materials Project) |
 | Phonon | heat capacity `CV` at 300 K (J/(K·mol)) and dynamical stability | 1,170 binary compounds (Alexandria) |
 | Softening | slope of MLIP forces against DFT forces on high-energy configurations | 979 WBM materials, 9,308 frames |
+| Discovery | stability against the convex hull (F1, DAF, `e_above_hull` MAE) and relaxed geometry (RMSD, symmetry) | 256,963 WBM crystals (Matbench Discovery) |
+| Kappa | lattice thermal conductivity at 300 K (κ_SRME, κ_SRE) | 103 PhononDB crystals (Matbench Discovery) |
 
 The unmodified upstream code (materialyzeai/matcalc at `b04715d`, 2026-09-09) is kept on the branch
 [`upstream-main`](https://github.com/wakamiya0315/matcalc/tree/upstream-main). Equilibrium,
@@ -27,8 +31,9 @@ or, without a clone, `pip install "matcalc[torchsim,benchmark] @ git+https://git
 The package is still called `matcalc` and replaces upstream's in the same environment.
 
 `torchsim` installs TorchSim (`torch-sim-atomistic` ≥ 0.6.2, and `moyopy` for its symmetry constraint) for
-batched GPU runs; `benchmark` installs `matminer`, needed for the structural distance of the Equilibrium
-benchmark. The MLIP itself is not part of matcalc: install it separately and pass its ASE calculator (or
+batched GPU runs; `benchmark` installs `matminer` and `moyopy`, needed for the structural distance of the
+Equilibrium benchmark and the space groups of the Discovery benchmark; `kappa` installs phono3py for the
+Kappa benchmark. The MLIP itself is not part of matcalc: install it separately and pass its ASE calculator (or
 its TorchSim model).
 
 ## Run
@@ -67,7 +72,8 @@ table = matcalc.PhononBenchmark(workers=4).run(simulator, "my-mlip")
   exactly the path of ASE's FIRE on a `FrechetCellFilter` whatever batch it is in: the first step of a
   structure joining a running batch, the order in which FIRE's mixing parameter is updated, and ASE's
   convergence test (transformed atomic forces plus cell forces, checked before the first step too).
-  With `fix_symmetry=True` (Phonon benchmark) TorchSim's `FixSymmetry` constraint plays the role of ASE's.
+  With `fix_symmetry=True` (Phonon and Kappa benchmarks) TorchSim's `FixSymmetry` constraint plays the
+  role of ASE's.
 - Single points are packed into batches by size; force-only single points (phonons, softening) skip the
   stress. A structure larger than the batch capacity is evaluated on its own, and one that does not fit
   on the GPU even alone gets no prediction (as with the ASE path).
@@ -76,7 +82,8 @@ table = matcalc.PhononBenchmark(workers=4).run(simulator, "my-mlip")
   memory is mostly a fixed cost that its memory metric ignores; instead the two probes bound the memory of
   each structure of a call, so that a few tiny cells no longer shrink the batches of all the others. When a
   batch runs out of memory the capacity is lowered; a relaxation is retried with half the capacity.
-- The CPU work (phonopy, structural fingerprints) runs in `workers` parallel processes.
+- The CPU work (phonopy and phono3py, structural fingerprints, structure matching and symmetry) runs in
+  `workers` parallel processes, as far as possible while the GPU computes the next structures.
 
 Agreement with the ASE path and wall times are reported in [docs/validation.md](docs/validation.md).
 
@@ -102,14 +109,17 @@ ruff and mypy, on every push and pull request to `main`. GPU runs with a real ML
 src/matcalc/
   benchmarks/   one file per benchmark; each reads as a recipe of stages
                 (relax everything → build strained/displaced cells → evaluate them → fit);
-                data/ holds the Phonon dataset (settings of the DFT phonon calculations)
+                data/ holds the Phonon and Kappa datasets (settings and results of the DFT
+                phonon calculations)
   properties/   the physics as plain functions: elastic fit, phonons, formation energy,
-                softening scale, structural fingerprints
+                softening scale, structural fingerprints, stability and geometry metrics,
+                thermal conductivity
   simulation/   simulators: what evaluates the MLIP. ASESimulator relaxes (FIRE + Frechet cell
                 filter) and computes single points with any ASE calculator, one structure at a time;
                 TorchSimSimulator does the same in batches on the GPU
   datasets.py   download and reproducible subsets
-scripts/        build_phonon_dataset.py: the Phonon dataset from Alexandria's phonopy files
+scripts/        build_phonon_dataset.py: the Phonon dataset from Alexandria's phonopy files;
+                build_kappa_dataset.py: the Kappa dataset from PhononDB's phono3py force sets
 validation/     the runs behind docs/validation.md (with MACE as the test model)
 ```
 
@@ -117,6 +127,11 @@ A benchmark only asks its simulator for two operations, `relax(structures, fmax,
 `single_point(structures)`, always for all materials of a chunk at once.
 
 ## Differences from upstream
+
+Added: the Discovery and Kappa benchmarks, Matbench Discovery's discovery (with geometry optimization)
+and κ_SRME tasks written in the same form as the others (see [docs/benchmarks.md](docs/benchmarks.md)).
+Their data come from Matbench Discovery's Figshare (downloaded on first use) and, for the Kappa
+reference, from PhononDB's PBE force sets (packaged); both are CC BY 4.0.
 
 Removed: every calculator the benchmarks do not use (adsorption, EOS, grain boundaries, interfaces,
 LAMMPS, MD, NEB, order, phonon3, QHA, surfaces), `ChainedCalc`, the multi-provider model registry, the
@@ -158,4 +173,7 @@ Kept on purpose, for comparability with published numbers (Equilibrium, Elastici
 
 Please cite matcalc (see [`citation.cff`](citation.cff)) and the papers of the datasets and models you use;
 for the softening benchmark, B. Deng et al., npj Comput. Mater. 11, 9 (2025); for the phonon benchmark,
-A. Loew et al., npj Comput. Mater. (2025), doi:10.1038/s41524-025-01650-1.
+A. Loew et al., npj Comput. Mater. (2025), doi:10.1038/s41524-025-01650-1; for the discovery benchmark,
+J. Riebesell et al., Nat. Mach. Intell. 7, 836 (2025), doi:10.1038/s42256-025-01055-1, and H.-C. Wang,
+S. Botti, M. A. L. Marques, npj Comput. Mater. 7, 12 (2021); for the kappa benchmark, B. Póta et al.,
+arXiv:2408.00755, and A. Togo, L. Chaput, I. Tanaka, Phys. Rev. B 91, 094306 (2015).

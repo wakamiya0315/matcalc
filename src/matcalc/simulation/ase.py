@@ -51,7 +51,7 @@ class ASESimulator:
 
     def relax(
         self,
-        structures: Sequence[Structure],
+        structures: Sequence[Structure | Atoms],
         *,
         fmax: float,
         max_steps: int,
