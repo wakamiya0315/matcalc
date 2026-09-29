@@ -30,6 +30,7 @@ code); set both so that ``workers`` x threads fits the cores.
 
 from __future__ import annotations
 
+import pickle
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -53,7 +54,7 @@ from matcalc.structures import to_ase_atoms
 from ._common import OK, Benchmark, Material, failed, pool_map, split_into_parts
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
 
     from ase import Atoms
 
@@ -181,6 +182,9 @@ class KappaBenchmark(Benchmark):
     def evaluate(self, materials: Sequence[Material], simulator: Simulator) -> list[dict[str, Any]]:
         """Steps 1-4 for some crystals.
 
+        The conductivities of one part of the crystals are computed in the worker processes while the GPU
+        evaluates the FC3 supercells of the next part.
+
         Args:
             materials: Crystals to evaluate.
             simulator: The simulator of this run.
@@ -189,20 +193,75 @@ class KappaBenchmark(Benchmark):
             Per crystal: ``kappa`` (W/(m K)), ``srd``, ``sre``, ``srme``, ``status`` (with the reason of a
             censored prediction) and ``relax_steps``.
         """
-        with self.stage("relax"):
-            relaxed = simulator.relax(
-                [m.structure for m in materials],
-                fmax=self.fmax,
-                max_steps=self.max_steps,
-                fix_symmetry=True,
-                symprec=self.relax_symprec,
-            )
         predictions: list[dict[str, Any]] = [{} for _ in materials]
-        cells = self._symmetric_cells(materials, relaxed, predictions)
+        relax_steps: list[int] = []
         with self.worker_pool() as pool:
-            harmonic = self._harmonic_step(materials, cells, simulator, pool, predictions)
-            self._conductivity_step(materials, cells, harmonic, simulator, pool, predictions)
-        return [p | {"relax_steps": r.n_steps} for p, r in zip(predictions, relaxed, strict=True)]
+            pending = []
+            for indices, jobs in self._conductivity_jobs(materials, simulator, pool, predictions, relax_steps):
+                with self.stage("conductivity"):  # only the time the GPU waits for the CPU
+                    pending.append((indices, pool_map(pool, _conductivity_or_error, jobs)))
+            with self.stage("conductivity"):
+                for indices, outcomes in pending:
+                    for i, outcome in zip(indices, outcomes, strict=True):
+                        predictions[i] = _conductivity_prediction(outcome)
+        return [p | {"relax_steps": steps} for p, steps in zip(predictions, relax_steps, strict=True)]
+
+    def save_forces(self, model: Any, path: str | Path) -> None:
+        """Steps 1-3 for all crystals, saving the inputs of the conductivities instead of computing them.
+
+        The conductivities (phono3py, CPU only) take almost all of the time of the benchmark. With this method
+        and ``run_saved_forces`` the MLIP runs on a GPU node and the conductivities on a node with many CPU
+        cores: for MACE-MP-0 on TSUBAME4, 19 min on an H100 MIG slice, then 44 min on 16 cores, where the slice
+        alone, with its 4 cores, did not finish in 2 h 15 min.
+
+        Args:
+            model: An ASE calculator, a TorchSim model, or a simulator.
+            path: File to write (a pickle, of about 100 MB for the 103 crystals; load only files you wrote).
+        """
+        from matcalc.simulation import as_simulator
+
+        simulator = as_simulator(model)
+        predictions: list[dict[str, Any]] = [{} for _ in self.materials]
+        relax_steps: list[int] = []
+        with self.worker_pool() as pool:
+            jobs = {
+                i: job
+                for indices, part in self._conductivity_jobs(self.materials, simulator, pool, predictions, relax_steps)
+                for i, job in zip(indices, part, strict=True)
+            }
+        saved = {"meta": self._saved_meta(), "predictions": predictions, "relax_steps": relax_steps, "jobs": jobs}
+        with Path(path).open("wb") as f:
+            pickle.dump(saved, f)
+
+    def run_saved_forces(self, path: str | Path, model_name: str) -> pd.DataFrame:
+        """Step 4 from the file of ``save_forces``: the conductivities in ``workers`` processes.
+
+        Args:
+            path: File written by ``save_forces`` with the same dataset, draw and settings.
+            model_name: Label of the model for the columns, as in ``run``.
+
+        Returns:
+            The table that ``run`` returns.
+
+        Raises:
+            ValueError: If the file belongs to another dataset, draw or settings.
+        """
+        with Path(path).open("rb") as f:
+            saved = pickle.load(f)  # noqa: S301 - a file of save_forces
+        if saved["meta"] != self._saved_meta():
+            raise ValueError(f"{path} was saved for {saved['meta']}, not for {self._saved_meta()}")
+        predictions = saved["predictions"]
+        indices = list(saved["jobs"])  # the costliest first
+        with self.worker_pool() as pool, self.stage("conductivity"):
+            for i, outcome in zip(
+                indices, pool_map(pool, _conductivity_or_error, list(saved["jobs"].values())), strict=True
+            ):
+                predictions[i] = _conductivity_prediction(outcome)
+        rows = [
+            self._row(material, prediction | {"relax_steps": steps}, model_name)
+            for material, prediction, steps in zip(self.materials, predictions, saved["relax_steps"], strict=True)
+        ]
+        return self._table(rows)
 
     def summarize(self, table: pd.DataFrame, model_name: str) -> dict[str, Any]:
         """κ_SRME, κ_SRE and κ_SRD (means over the crystals; censored ones count as 2) and failure rates.
@@ -305,20 +364,37 @@ class KappaBenchmark(Benchmark):
                 conductive[i] = job
         return conductive
 
-    def _conductivity_step(
+    def _saved_meta(self) -> dict[str, Any]:
+        dataset = self.dataset.name if isinstance(self.dataset, Path) else str(self.dataset)
+        return {"dataset": dataset, "materials": [m.material_id for m in self.materials]} | self.run_settings()
+
+    def _conductivity_jobs(
         self,
         materials: Sequence[Material],
-        cells: dict[int, Atoms],
-        harmonic: dict[int, HarmonicJob],
         simulator: Simulator,
         pool: Any,
         predictions: list[dict[str, Any]],
-    ) -> None:
-        """Steps 3-4, part by part.
+        relax_steps: list[int],
+    ) -> Iterator[tuple[list[int], list[ConductivityJob]]]:
+        """Steps 1-3: relaxations, harmonic check and FC3 forces, the inputs of the conductivities part by part.
 
-        The conductivities of one part are computed in the worker processes while the GPU evaluates the
-        FC3 supercells of the next part.
+        Crystals that get no conductivity are censored in ``predictions``; ``relax_steps`` receives the FIRE
+        steps of every crystal.
+
+        Yields:
+            The crystals of a part (indices into ``materials``) and the inputs of their conductivities.
         """
+        with self.stage("relax"):
+            relaxed = simulator.relax(
+                [m.structure for m in materials],
+                fmax=self.fmax,
+                max_steps=self.max_steps,
+                fix_symmetry=True,
+                symprec=self.relax_symprec,
+            )
+        relax_steps.extend(r.n_steps for r in relaxed)
+        cells = self._symmetric_cells(materials, relaxed, predictions)
+        harmonic = self._harmonic_step(materials, cells, simulator, pool, predictions)
         phono3py = {i: self._phono3py(materials[i], cells[i]) for i in harmonic}
         supercells = {i: fc3_supercells(p) for i, p in phono3py.items()}
         # The costliest conductivities first (bands squared times q-points), so that no worker is left with
@@ -327,7 +403,6 @@ class KappaBenchmark(Benchmark):
             harmonic, key=lambda i: -(len(phono3py[i].primitive) ** 2) * int(np.prod(materials[i].settings["mesh"]))
         )
         sizes = [sum(len(c) for c in supercells[i] if c is not None) for i in order]
-        pending = []
         for part in split_into_parts(order, sizes):
             with self.stage("single points"):
                 todo = [c for i in part for c in supercells[i] if c is not None]
@@ -346,15 +421,12 @@ class KappaBenchmark(Benchmark):
                     reference_kappa=materials[i].reference["kappa"],
                 )
                 jobs.append((i, job))
-            with self.stage("conductivity"):  # only the time the GPU waits for the CPU
-                pending.append(([i for i, _ in jobs], pool_map(pool, _conductivity_or_error, [j for _, j in jobs])))
-        with self.stage("conductivity"):
-            for indices, results in pending:
-                for i, outcome in zip(indices, results, strict=True):
-                    if isinstance(outcome, str):
-                        predictions[i] = _censored(f"phono3py failed: {outcome}")
-                    else:
-                        predictions[i] = outcome | {"status": OK}
+            yield [i for i, _ in jobs], [job for _, job in jobs]
+
+
+def _conductivity_prediction(outcome: dict[str, float] | str) -> dict[str, Any]:
+    """The prediction of a crystal from the result of ``_conductivity_or_error``."""
+    return _censored(f"phono3py failed: {outcome}") if isinstance(outcome, str) else outcome | {"status": OK}
 
 
 def _censored(reason: str) -> dict[str, Any]:
