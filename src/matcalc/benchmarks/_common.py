@@ -136,6 +136,15 @@ class Benchmark:
         """
         raise NotImplementedError
 
+    def run_settings(self) -> dict[str, str]:
+        """Settings that change the results and differ from the defaults (default: none).
+
+        Returns:
+            Setting name → value. They are stored in the checkpoint, so that a run with other settings
+            does not resume it.
+        """
+        return {}
+
     def prepare(self, simulator: Simulator, cache: dict[str, Any]) -> None:
         """Work shared by all materials, done once before the first chunk (default: nothing).
 
@@ -181,7 +190,9 @@ class Benchmark:
         """
         simulator = as_simulator(model)
         dataset = self.dataset.name if isinstance(self.dataset, Path) else str(self.dataset)
-        checkpoint = _Checkpoint(checkpoint_file, benchmark=self.name, dataset=dataset, model=model_name)
+        checkpoint = _Checkpoint(
+            checkpoint_file, benchmark=self.name, dataset=dataset, model=model_name, **self.run_settings()
+        )
         finished = {row[self.id_column] for row in checkpoint.rows}
         todo = [material for material in self.materials if material.material_id not in finished]
         if todo:

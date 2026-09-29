@@ -82,11 +82,52 @@ def test_phonon(phonon_dataset: Path, emt_simulator: ASESimulator) -> None:
     assert 0.8 * 3 * R_GAS < heat_capacity < 3 * R_GAS  # one atom per primitive cell: below Dulong-Petit
     assert table.loc[0, "stable_emt"]  # fcc Cu is dynamically stable
     assert (table["relax_steps_emt"] > 0).all()
+    assert (table["residual_force_emt"] < 1e-6).all()  # both cells have their forces zero by symmetry
     summary = benchmark.summarize(table, "emt")
     assert summary["CV"]["n"] == 2
     assert summary["CV (DFT-stable)"]["n"] == 1
     assert summary["CV (DFT-stable)"]["MAE"] == pytest.approx(abs(heat_capacity - 24.4))
     assert sum(summary["stability"].values()) == 2
+
+
+def test_phonon_without_symmetry_gives_the_same_results_for_an_o3_invariant_potential(
+    phonon_dataset: Path, emt_simulator: ASESimulator
+) -> None:
+    with_symmetry = PhononBenchmark(phonon_dataset).run(emt_simulator, "emt")
+    benchmark = PhononBenchmark(phonon_dataset, use_symmetry=False)
+    table = benchmark.run(emt_simulator, "emt")
+    assert list(table["status_emt"]) == ["ok", "ok"]
+    np.testing.assert_allclose(table["CV_emt"], with_symmetry["CV_emt"], rtol=1e-6)
+    np.testing.assert_allclose(table["min_frequency_emt"], with_symmetry["min_frequency_emt"], atol=1e-3)
+    assert list(table["stable_emt"]) == list(with_symmetry["stable_emt"])
+    assert benchmark.summarize(table, "emt")["use_symmetry"] is False
+    assert PhononBenchmark(phonon_dataset).summarize(with_symmetry, "emt")["use_symmetry"] is True
+
+
+def test_phonon_residual_forces_change_nothing_for_an_o3_invariant_potential(
+    phonon_dataset: Path, emt_simulator: ASESimulator
+) -> None:
+    subtracted = PhononBenchmark(phonon_dataset).run(emt_simulator, "emt")
+    benchmark = PhononBenchmark(phonon_dataset, subtract_residual_forces=False)
+    table = benchmark.run(emt_simulator, "emt")
+    np.testing.assert_allclose(table["CV_emt"], subtracted["CV_emt"], rtol=1e-9)
+    np.testing.assert_allclose(table["min_frequency_emt"], subtracted["min_frequency_emt"], atol=1e-6)
+    assert "residual_force_emt" not in table.columns
+    assert benchmark.summarize(table, "emt")["subtract_residual_forces"] is False
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [({"use_symmetry": False}, {}), ({"subtract_residual_forces": False}, {})],
+    ids=["use_symmetry", "subtract_residual_forces"],
+)
+def test_phonon_checkpoint_is_not_resumed_with_other_settings(
+    phonon_dataset: Path, emt_simulator: ASESimulator, tmp_path: Path, first: dict, second: dict
+) -> None:
+    checkpoint = tmp_path / "phonon.json"
+    PhononBenchmark(phonon_dataset, **first).run(emt_simulator, "emt", checkpoint_file=checkpoint)
+    with pytest.raises(ValueError, match="belongs to another run"):
+        PhononBenchmark(phonon_dataset, **second).run(emt_simulator, "emt", checkpoint_file=checkpoint)
 
 
 def test_phonon_without_converged_relaxation_gives_nan(tmp_path: Path, emt_simulator: ASESimulator) -> None:

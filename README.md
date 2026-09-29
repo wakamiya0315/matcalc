@@ -149,6 +149,12 @@ DFT reference (A. Loew et al., npj Comput. Mater. 2025; Alexandria, CC BY 4.0) w
 - C_V is taken on the 20 x 20 x 20 q-mesh of the reference (upstream: phonopy's default mesh), and the
   dynamical stability is judged as in the reference (imaginary modes below -50 K at the q-points
   commensurate with the supercell); summaries also cover the 996 compounds that are stable in DFT.
+- the forces on the undisplaced supercell are subtracted from those of the displaced ones (since
+  2026-09-28; one more supercell per compound). This changes nothing for O(3)-equivariant MLIPs, but an
+  SO(3)-equivariant or non-equivariant MLIP leaves forces on the symmetry-constrained relaxed cell that
+  phonopy's symmetric construction would read as a response, which gave such models spurious imaginary
+  modes; `PhononBenchmark(use_symmetry=False)` also drops the symmetry of the force constants, exact for any
+  MLIP ([docs/benchmarks.md](docs/benchmarks.md), [docs/validation.md](docs/validation.md), section 5.3).
 
 Changed on purpose (the numbers of a successful run are not affected):
 

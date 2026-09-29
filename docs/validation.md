@@ -183,6 +183,72 @@ still 4; the paper reports 0.1–0.9 % failed relaxations for its models. With i
 relaxations run next to the others: the last 60 compounds cost about 160 s of the relaxation stage, so a
 smaller limit would save little time. The default stays at 5,000.
 
+### 5.3 MLIPs that are not O(3)-invariant (V17)
+
+**What was seen.** Twelve MLIPs of about a million parameters trained on MatPES (PBE and r2SCAN; six
+architectures, with the UnifyMLIP library) ran the full benchmark with the protocol above (float64). The
+two SO(3)-equivariant architectures, SevenNet without parity and eSEN, called 267–287 of the 996
+DFT-stable compounds unstable (FU), the four O(3)-equivariant ones (MACE, NequIP, Nequix, Allegro)
+13–37. The imaginary frequencies of the SO(3) models were large: a median of −8 to −15 THz over those
+compounds, against −1.4 to −1.7 THz, close to the −1.04 THz threshold, for the O(3) models. Their C_V
+errors stayed within or somewhat above the range of the O(3) models (PBE 7.2 and 8.2 J/(K·mol) against
+7.1–10.1; r2SCAN 8.2 and 6.9 against 4.9–6.1). For comparison, Loew et al. (Table 3) report 5–23 %
+false-unstable compounds for their O(3) models (MACE-MP-0, MatterSim-v1, M3GNet, CHGNet), 19 % for the SO(3)
+SevenNet-0 and 85–93 % for ORB and eqV2-M, which they attribute to forces that are not energy gradients;
+the paper does not discuss symmetry.
+
+**Why** (phonopy 4.7, the traditional force-constant solver). phonopy fills the displacement–force pairs of
+a displaced atom with its site symmetry, solves Φ = −F/u by pseudo-inversion and copies Φ to the
+equivalent atoms with the space group. Both steps use inversion and mirrors, and both take the force on a
+displaced supercell for the response to the displacement. An SO(3)-equivariant model breaks this twice:
+
+1. Its forces on the relaxed cell do not vanish. The symmetry constraint of the relaxation symmetrizes
+   the forces, so FIRE stops when their symmetric part is below `fmax`, while the model's own forces keep a
+   part that does not follow the space group (median 0.006–0.013 eV/Å on the compounds below, up to
+   0.12 eV/Å; 0.002–0.005 eV/Å, following the symmetry, for the O(3) models). With 0.01 Å displacements a
+   residual force F₀ becomes a force-constant error of order F₀/u, 0.1–10 eV/Å², which is enough for
+   imaginary modes of several THz. A residual that follows the symmetry cancels in phonopy's
+   symmetrization, which is why O(3) models (and DFT) do not see it.
+2. Its forces change under inversion and mirrors (by 0.003–0.09 eV/Å on displaced supercells), so the
+   pairs that phonopy completes with these operations are not the model's.
+
+The first effect is removed by subtracting the forces on the undisplaced supercell from those of every
+displaced supercell (`subtract_residual_forces`, now the default: one more supercell per compound). Both
+are removed by building the force constants without symmetry (`use_symmetry=False`): phonopy still uses the
+lattice translations, which hold for any MLIP, and displaces every atom of the primitive cell by ±0.01 Å
+along the three lattice directions (141,300 supercells for the whole dataset instead of 36,407, 3.9 times
+as many; the ± pairs cancel the residual forces too). The relaxation keeps the space group in every case.
+
+**Check** (`validation/v17_phonon_symmetry.py`, one `gpu_h` slice, float64). Four PBE models of the set
+above, on 50 compounds: 30 drawn at random (seed 42) and 20 of the 222 compounds that both SO(3) models
+called unstable while all four O(3) models and DFT called them stable. Three settings: the protocol before
+this change (`subtract_residual_forces=False`), the new default, and `use_symmetry=False`; the differences
+are against `use_symmetry=False`, which is exact for any model.
+
+| Model | Setting | FU (of 46 DFT-stable) | MAE C_V (J/(K·mol)) | \|ΔC_V\| median / max | \|Δ lowest frequency\| max (THz) |
+|---|---|---:|---:|---|---:|
+| eSEN (SO(3)) | before | 25 | 7.85 | 3.16 / 39.7 | 52.4 |
+| | default | 0 | 5.85 | 0.016 / 2.18 | 0.29 |
+| | `use_symmetry=False` | 0 | 5.77 | – | – |
+| SevenNet (SO(3)) | before | 27 | 7.46 | 0.44 / 30.3 | 35.2 |
+| | default | 2 | 7.52 | 0.0014 / 0.49 | 0.13 |
+| | `use_symmetry=False` | 2 | 7.54 | – | – |
+| MACE (O(3)) | before | 1 | 7.22 | 1e-12 / 0.0011 | 0.0009 |
+| | default | 1 | 7.22 | 6e-13 / 0.0011 | 0.0009 |
+| | `use_symmetry=False` | 1 | 7.22 | – | – |
+| NequIP (O(3)) | before | 2 | 8.39 | 1e-12 / 0.0015 | 0.0005 |
+| | default | 2 | 8.39 | 8e-13 / 0.0015 | 0.0005 |
+| | `use_symmetry=False` | 2 | 8.39 | – | – |
+
+- For the O(3) models the three settings agree to 0.002 J/(K·mol) and 0.001 THz: subtracting the residual
+  forces changes nothing, and phonopy's symmetry is exact, as expected. The numbers of section 5.2
+  (MACE-MatPES-PBE-0, O(3)) were computed before the change; they are not expected to move.
+- For the SO(3) models the subtraction removes the spurious instabilities (FU 25 → 0 and 27 → 2; the two
+  left are unstable without symmetry too) and brings C_V within 0.5 J/(K·mol) of the exact value for 47 of
+  the 50 compounds with eSEN (the other three up to 2.2 J/(K·mol), ClF) and for all 50 with SevenNet: what
+  remains is the second effect. `use_symmetry=False` is the setting for such models when the numbers should
+  be exact; it needs about four times as many single points.
+
 ## 6. Where the time goes
 
 Final code, one `gpu_h` slice per benchmark, 3 worker processes (runs V16; wall time of the run without
