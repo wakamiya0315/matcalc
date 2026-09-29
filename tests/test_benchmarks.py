@@ -254,3 +254,14 @@ def test_kappa(kappa_dataset: Path, emt_simulator: ASESimulator) -> None:
     summary = benchmark.summarize(table, "emt")
     assert summary["kappa_SRME"] == pytest.approx((ok["srme_emt"] + 2.0) / 2)
     assert summary["failure_rate"] == pytest.approx(0.5)
+
+
+def test_settings_that_change_the_results_are_kept_in_the_checkpoint(
+    discovery_dataset: Path, kappa_dataset: Path
+) -> None:
+    from matcalc import DiscoveryBenchmark, KappaBenchmark
+
+    assert DiscoveryBenchmark(discovery_dataset).run_settings() == {}
+    assert DiscoveryBenchmark(discovery_dataset, fmax=0.02).run_settings() == {"fmax": "0.02"}
+    assert KappaBenchmark(kappa_dataset).run_settings() == {}
+    assert KappaBenchmark(kappa_dataset, temperature=500.0).run_settings() == {"temperature": "500.0"}

@@ -140,6 +140,14 @@ class KappaBenchmark(Benchmark):
         self.temperature = temperature
         super().__init__(dataset, n_samples=n_samples, seed=seed, workers=workers)
 
+    def run_settings(self) -> dict[str, str]:
+        """The settings of the protocol that differ from the defaults.
+
+        Returns:
+            Setting name → value, kept in the checkpoint so that a run is not resumed with other settings.
+        """
+        return self._changed_settings("fmax", "max_steps", "relax_symprec", "symprec", "displacement", "temperature")
+
     def read_entries(self, raw: Any) -> list[Material]:
         """Read the crystals and their DFT conductivities.
 

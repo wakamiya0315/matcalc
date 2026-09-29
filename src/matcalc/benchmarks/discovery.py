@@ -140,6 +140,14 @@ class DiscoveryBenchmark(Benchmark):
         self.reference_energies: dict[str, float] = {}
         super().__init__(dataset, n_samples=n_samples, seed=seed, workers=workers)
 
+    def run_settings(self) -> dict[str, str]:
+        """The relaxation settings that differ from the defaults.
+
+        Returns:
+            Setting name → value, kept in the checkpoint so that a run is not resumed with other settings.
+        """
+        return self._changed_settings("fmax", "max_steps")
+
     def load_materials(self) -> list[Material]:
         """Read the WBM data; only the structures of the crystals drawn are parsed.
 

@@ -13,6 +13,7 @@ and returns a table with the DFT reference values next to the predictions.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import multiprocessing
 import time
@@ -144,6 +145,11 @@ class Benchmark:
             does not resume it.
         """
         return {}
+
+    def _changed_settings(self, *names: str) -> dict[str, str]:
+        """The attributes among ``names`` whose value differs from the default of the same argument of ``__init__``."""
+        defaults = inspect.signature(type(self).__init__).parameters
+        return {name: str(getattr(self, name)) for name in names if getattr(self, name) != defaults[name].default}
 
     def prepare(self, simulator: Simulator, cache: dict[str, Any]) -> None:
         """Work shared by all materials, done once before the first chunk (default: nothing).
