@@ -128,7 +128,7 @@ class DiscoveryBenchmark(Benchmark):
         """
         Args:
             dataset: ``"matbench-discovery-wbm"`` (downloaded from Figshare on first use), or a local
-                directory holding the files of ``WBM_FILES`` under their names.
+                directory (a ``pathlib.Path``) holding the files of ``WBM_FILES`` under their names.
             n_samples: Draw this many crystals at random (``None`` = all 256,963).
             seed: Seed of the random draw.
             fmax: Force threshold of the relaxations (eV/Å).
@@ -291,7 +291,7 @@ class DiscoveryBenchmark(Benchmark):
         if isinstance(self.dataset, Path):
             return {key: self.dataset / file.name for key, file in WBM_FILES.items()}
         if self.dataset != self.default_dataset:
-            raise ValueError(f"Unknown dataset {self.dataset!r}: use {self.default_dataset!r} or a local directory")
+            raise ValueError(f"Unknown dataset {self.dataset!r}: use {self.default_dataset!r} or a Path to a directory")
         return {key: download_figshare_file(file, "matbench-discovery") for key, file in WBM_FILES.items()}
 
     def _predict(self, material: Material, result: RelaxResult) -> dict[str, Any]:
