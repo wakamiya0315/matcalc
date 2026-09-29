@@ -1,8 +1,9 @@
 # Validation
 
-How the refactored code and the TorchSim simulator were checked, and how fast they are. The MLIP of all
+How the refactored code and the TorchSim simulator were checked, and how fast they are. The MLIP of the
 runs is MACE-MatPES-PBE-0 in float64, used only as a test model (it is not part of matcalc; see
-`validation/mace_models.py`). Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
+`validation/mace_models.py`); sections 7 and 8 use MACE-MP-0 instead, whose predictions Matbench Discovery
+publishes material by material. Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
 (`gpu_h`); quick checks on the shared interactive node. Software: torch 2.14.0+cu126, torch-sim-atomistic
 0.6.2, moyopy 0.20.0, mace-torch 0.3.16, ase 3.29.0, pymatgen 2026.9.23, phonopy 4.6.0. Scripts are in
 [`validation/`](../validation/).
@@ -304,3 +305,89 @@ Phonon (TorchSim, 1,170 compounds, one `gpu_h` slice):
 
 Model-specific speed-ups (lower precision, custom kernels) are left to whoever builds the model; the
 benchmark does not choose them.
+
+## 7. Discovery with MACE-MP-0
+
+The Discovery benchmark is compared crystal by crystal with the MACE-MP-0 predictions that Matbench
+Discovery publishes (`mace-mp-0-2023-12-11-discovery.csv.gz` on Figshare, formation energies rounded to
+1e-4 eV/atom), made with the same model (mace-torch's "medium" checkpoint, float64) and the same
+relaxation (FIRE on a Frechet cell filter, 0.05 eV/Å, at most 500 steps). TorchSim, 3 worker processes,
+one `gpu_h` slice.
+
+**TorchSim vs ASE** (300 random crystals, seed 42): the same number of FIRE steps for every crystal,
+E_form within 5.5e-6 eV/atom (median 1e-15), RMSD within 6e-11, and the same space groups except for one
+crystal at 1e-5 Å (Na2Ni2O8, whose relaxation also moves by 5e-6 eV/atom between two TorchSim runs; the
+same space group at 1e-2 Å). Wall time without loading the data: 225 s with ASE, 44 s with TorchSim.
+
+**Against the published predictions.** On 10,000 random crystals, E_form agrees within 1.1e-4 eV/atom
+(the rounding of the published values) for all 10,000. Before the benchmark corrected the relaxed
+structure's oxide type, 14 of them differed by 0.07–0.42 eV/atom: oxides whose relaxation moves O atoms
+across a threshold of the O–O distance that pymatgen uses to tell oxides, peroxides and superoxides apart
+(for example BaYbO4, a peroxide in DFT and a superoxide after the MACE relaxation), so that the MP2020
+correction changes. Recomputing the whole correction with the installed pymatgen instead changes it for 56
+of 4,000 random DFT entries (1.4 %: anion corrections of Te, Se, Si, H or Cl; matbench-discovery issue #358).
+The correction adds 4 s to the 43 s of the geometry stage.
+
+On all 256,963 crystals (a run of the whole set, whose 37,580 crystals with O or S were run again after the
+correction was added), E_form agrees within 1.5e-4 eV/atom for all but 46 of the 256,925 published
+predictions, within 0.01 eV/atom for all but 2. The 46 are long relaxations: 5 reach the 500-step limit and
+most others take 150–350 steps on flat energy surfaces, where the last digits of the forces decide the path
+(37 of the rerun crystals also took a different number of steps than in the first run of the same code).
+The largest difference, SeOCl2 (wbm-1-43995, 0.42 eV/atom), is such a case: the TorchSim and ASE paths
+agree within 1e-9 Å for 45 steps, then part; at step 57 TorchSim's structure meets fmax in a flat region of
+the energy surface, while ASE's, 3e-3 Å away, does not and continues to a minimum 0.42 eV/atom lower (the
+published value; ASE takes 135 steps to it on a CPU, 125 on the GPU).
+
+| | This benchmark | Leaderboard |
+|---|---|---|
+| All crystals: F1 / DAF / precision / recall | 0.6678 / 3.400 / 0.5835 / 0.7805 | 0.668 / 3.4 / 0.583 / 0.781 |
+| All crystals: MAE / RMSE / R² of E_hull (eV/atom) | 0.0547 / 0.0988 / 0.6984 | 0.055 / 0.099 / 0.698 |
+| All crystals: TP / FP / TN / FN, missing | 34,416 / 24,569 / 188,302 / 9,676, 38 | 34,420 / 24,576 / 188,295 / 9,672, 38 |
+| Unique prototypes: F1 / DAF / precision / recall | 0.6694 / 3.777 / 0.5774 / 0.7964 | 0.669 / 3.777 / 0.577 / 0.796 |
+| Unique prototypes: MAE / RMSE / R² | 0.0569 / 0.1013 / 0.6972 | 0.057 / 0.101 / 0.697 |
+| Mean RMSD; symmetry match at 1e-5 / 1e-2 Å (249,254 crystals) | 0.0915; 0.7385 / 0.8112 | 0.0915; 0.7385 / 0.8112 |
+| Symmetry decrease / increase at 1e-5 Å (249,254 crystals) | 0.0335 / 0.2239 | 0.0335 / 0.2239 |
+
+The leaderboard's geometry metrics cover the 249,254 crystals of Matbench Discovery's file of relaxed
+MACE-MP-0 structures (7,709 crystals, in contiguous ranges of ids, are missing from it); on those crystals
+the RMSD agrees within 1e-4 for 99.98 % of the 231,562 that both match to their DFT structure, the same
+17,688 are unmatched in both (4 in only one), and the space groups agree for 99.98 % at 1e-5 Å and 99.99 %
+at 1e-2 Å (the published analysis used moyopy 0.4.2). Over all 256,963 crystals the benchmark gives a mean
+RMSD of 0.0924 and symmetry matches of 0.7371 and 0.8110.
+
+**Time.** The whole set on one `gpu_h` slice (TorchSim, 3 workers): 3.4 h, of which 11,265 s relaxation
+(23 crystals per second), 975 s geometry in the worker processes, and 56 s to load the model and the data
+(only the drawn crystals are parsed: 24 s for a draw of 10,000). At ASE's rate on the 300-crystal subset
+(1.3 crystals per second), the whole set would take about 54 h.
+
+## 8. Kappa with MACE-MP-0
+
+**The metric.** With Matbench Discovery's published MACE-MP-0 mode conductivities
+(`mace-mp-0-2024-11-09-phonons-kappa-103.json.gz`) and its published DFT reference, the benchmark's
+`symmetric_relative_mean_error` and `symmetric_relative_difference` give κ_SRME 0.6823, κ_SRE 0.4710 and
+κ_SRD −0.2845 with 3 failures: the leaderboard's values.
+
+**The reference.** Matbench Discovery computed its DFT reference with phono3py 3.30 from PhononDB's PBE
+force sets. With phono3py 3.30 (and phonopy 3.5) the benchmark's steps on those force sets reproduce it:
+wurtzite AgI +0.003 % (mode-resolved SRME against the published reference 5.6e-4), BeTe +0.02 %.
+phono3py 4.7, whose Wigner solver ("SMM19") the package uses, gives +0.43 % and −0.35 % (SRME 5.7e-3 and
+4.2e-3) and is ten times faster (52 s instead of 548 s for AgI on the same laptop).
+On all 103 compounds, the recomputed reference (phono3py 4.7, the packaged dataset; 46 min on a 10-core
+laptop) differs from the published one by a median of −0.13 % (mean |Δ| 0.31 %, 99 compounds within 1 %),
+and the mode-resolved SRME between the two is 0.0046 on average (at most 0.034): the floor that the solver
+change puts under κ_SRME. The four compounds beyond 1 % are low-conductivity halides whose coherence
+(wave-like) conductivity is a large part of the total: rock-salt AgCl +3.4 %, wurtzite and zinc-blende CuCl
++2.7 %, rock-salt AgBr +2.3 %. The difference is in the coherence term: for AgCl the particle-like
+conductivity is 0.2905 W/(m K) with phono3py 4.7 and 0.2913 with 3.30, the coherence conductivity 0.2548 and
+0.2360; for zinc-blende CuCl 1.3735 and 1.3773, and 0.1802 and 0.1338.
+
+**TorchSim vs ASE** (5 random crystals, seed 42, 2 workers with 2 OpenMP threads each): the same status and
+the same number of FIRE steps for every crystal, κ within 0.03 % for LiCl, LiF and CaS and 0.12 % for
+ZnTe. BeTe differs by 3 % (120.4 vs 124.1 W/(m K)), but so do two runs of the same code: ASE gave 120.3
+and 124.3, TorchSim 120.8 and 122.1. In MACE-MP-0's BeTe, the highest optical mode at the q-point next to Γ
+(10.70 THz) has a three-phonon linewidth of 1.3e-7 THz, so its lifetime comes from isotope scattering
+(2.0e-7 THz), which the tetrahedron integration over this flat band changes to 4.2e-7 THz when the forces
+change by 1e-12 eV/Å; that one mode moves κ by 3 W/(m K). With the DFT forces, the same noise changes
+BeTe's κ by less than 2e-4 (relative). Wall time for the 5 crystals: 365 s with ASE, 292 s with TorchSim,
+of which 276 and 213 s are spent waiting for the conductivities (CPU).
+
