@@ -13,9 +13,9 @@ Recipe (Matbench Discovery's protocol "phonondb-v1"):
 1. Relax the PBE unit cell keeping its space group (FIRE on a Frechet cell filter with ASE's
    ``FixSymmetry`` at 0.01 Å, fmax = 1e-4 eV/Å, at most 300 steps). For these cubic and hexagonal cells
    the symmetrized cell step has no shear, as with the reference's no-tilt cell filter.
-2. Harmonic force constants from the displaced supercells of the reference (0.01 Å), and the phonon
-   frequencies on the q-point mesh. A crystal with imaginary modes, or whose space group changed in the
-   relaxation, gets no conductivity (its error counts as the maximum, 2).
+2. Harmonic force constants from the displaced supercells of the reference (0.01 Å, the reference's
+   primitive cell) and the phonon frequencies on the q-point mesh. A crystal with imaginary modes, or
+   whose space group changed in the relaxation, gets no conductivity (its error counts as the maximum, 2).
 3. Third-order force constants and the lattice thermal conductivity at 300 K from the Wigner transport
    equation in the relaxation-time approximation (phono3py, isotope scattering).
 4. Errors against DFT: symmetric relative difference of κ (SRD, and its absolute value SRE) and the
@@ -70,6 +70,7 @@ class HarmonicJob:
     unit_cell: Atoms
     fc2_supercell: list[list[int]]
     fc3_supercell: list[list[int]]
+    primitive_matrix: list[list[float]]
     mesh: list[int]
     displacement: float
     symprec: float
@@ -159,6 +160,7 @@ class KappaBenchmark(Benchmark):
                 settings={
                     "fc2_supercell": entry["fc2_supercell"],
                     "fc3_supercell": entry["fc3_supercell"],
+                    "primitive_matrix": entry["primitive_matrix"],
                     "mesh": entry["q_point_mesh"],
                     "space_group": entry["space_group"],
                 },
@@ -227,6 +229,7 @@ class KappaBenchmark(Benchmark):
             material.settings["fc2_supercell"],
             material.settings["fc3_supercell"],
             material.settings["mesh"],
+            primitive_matrix=material.settings["primitive_matrix"],
             displacement=self.displacement,
             symprec=self.symprec,
         )
@@ -274,6 +277,7 @@ class KappaBenchmark(Benchmark):
                 unit_cell=cell,
                 fc2_supercell=materials[i].settings["fc2_supercell"],
                 fc3_supercell=materials[i].settings["fc3_supercell"],
+                primitive_matrix=materials[i].settings["primitive_matrix"],
                 mesh=materials[i].settings["mesh"],
                 displacement=self.displacement,
                 symprec=self.symprec,
@@ -365,6 +369,7 @@ def _setup(job: HarmonicJob) -> Any:
         job.fc2_supercell,
         job.fc3_supercell,
         job.mesh,
+        primitive_matrix=job.primitive_matrix,
         displacement=job.displacement,
         symprec=job.symprec,
     )

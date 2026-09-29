@@ -46,8 +46,10 @@ def reference_conductivity(job: tuple[str, str, list[int]]) -> dict:
     path, material_id, mesh = job
     ph3 = phono3py.load(path, produce_fc=False, is_nac=False, log_level=0)
     ph3.mesh_numbers = mesh
-    ph3.produce_fc2(symmetrize_fc2=True)
-    ph3.produce_fc3(symmetrize_fc3r=True)
+    ph3.produce_fc2()
+    ph3.symmetrize_fc2()
+    ph3.produce_fc3()
+    ph3.symmetrize_fc3()
     conductivity = wigner_conductivity(ph3, temperature=TEMPERATURE)
     cell = ph3.unitcell
     return {
@@ -129,6 +131,8 @@ def main() -> None:
                 "positions": atoms.positions.tolist(),
                 "fc2_supercell": np.asarray(info["fc2_supercell"]).tolist(),
                 "fc3_supercell": np.asarray(info["fc3_supercell"]).tolist(),
+                # The task gives it for the cubic cells; the wurtzite unit cells are primitive.
+                "primitive_matrix": np.asarray(info.get("primitive_matrix", np.eye(3))).tolist(),
                 "q_point_mesh": [int(n) for n in info["q_point_mesh"]],
                 "kappa": float(np.mean(result["kappa"][:3])),
                 "published_kappa": float(published[info["material_id"]]),
@@ -142,9 +146,10 @@ def main() -> None:
     dataset = {
         "description": (
             "Kappa benchmark: 103 rock-salt, zinc-blende and wurtzite crystals (PhononDB, Matbench Discovery's "
-            "kappa_SRME task) with PBE unit cells (Angstrom), supercell matrices, q-point meshes, and the PBE lattice "
-            "thermal conductivity at 300 K (W/(m K)): Voigt tensor, mean of the diagonal, and the direction-averaged "
-            "conductivity of every mode (irreducible q-point x band, including the q-point weight). Recomputed from "
+            "kappa_SRME task) with PBE unit cells (Angstrom), supercell and primitive matrices, q-point meshes, and "
+            "the PBE lattice thermal conductivity at 300 K (W/(m K)): Voigt tensor, mean of the diagonal, and the "
+            "direction-averaged conductivity of every mode (irreducible q-point x band, including the q-point weight). "
+            "Recomputed from "
             f"PhononDB's PBE force sets with phono3py {phono3py.__version__} (Wigner transport, RTA, isotope "
             "scattering); published_kappa is Matbench Discovery's value (phono3py 3.30)."
         ),

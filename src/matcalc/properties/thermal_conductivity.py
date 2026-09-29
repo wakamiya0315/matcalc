@@ -39,6 +39,7 @@ def make_phono3py(
     fc3_supercell: Sequence[Sequence[int]],
     mesh: Sequence[int],
     *,
+    primitive_matrix: Sequence[Sequence[float]] | str = "auto",
     displacement: float = 0.01,
     symprec: float = 1e-5,
 ) -> Phono3py:
@@ -49,6 +50,7 @@ def make_phono3py(
         fc2_supercell: Supercell matrix of the harmonic force constants (in units of the unit cell).
         fc3_supercell: Supercell matrix of the third-order force constants.
         mesh: q-point mesh of the conductivity.
+        primitive_matrix: Primitive cell in units of the unit cell, or "auto" (found by symmetry).
         displacement: Displacement amplitude (Å).
         symprec: Symmetry tolerance of phono3py (Å).
 
@@ -62,7 +64,7 @@ def make_phono3py(
         PhonopyAtoms(symbols=unit_cell.get_chemical_symbols(), cell=unit_cell.cell[:], positions=unit_cell.positions),
         supercell_matrix=np.asarray(fc3_supercell, dtype=int),
         phonon_supercell_matrix=np.asarray(fc2_supercell, dtype=int),
-        primitive_matrix="auto",
+        primitive_matrix=primitive_matrix,
         symprec=symprec,
     )
     phono3py.mesh_numbers = list(mesh)
@@ -91,7 +93,8 @@ def harmonic_frequencies(phono3py: Phono3py, fc2_forces: Sequence[np.ndarray]) -
         Frequencies (THz), shape (grid points, bands); the first grid point is Γ.
     """
     phono3py.phonon_forces = np.asarray(fc2_forces)
-    phono3py.produce_fc2(symmetrize_fc2=True)
+    phono3py.produce_fc2()
+    phono3py.symmetrize_fc2()
     phono3py.init_phph_interaction(symmetrize_fc3q=False)
     phono3py.run_phonon_solver()
     return np.asarray(phono3py.get_phonon_data()[0])
@@ -151,7 +154,8 @@ def thermal_conductivity(
     """
     n_atoms = len(phono3py.supercell)
     phono3py.forces = np.asarray([np.zeros((n_atoms, 3)) if f is None else f for f in fc3_forces])
-    phono3py.produce_fc3(symmetrize_fc3r=True)
+    phono3py.produce_fc3()
+    phono3py.symmetrize_fc3()
     return wigner_conductivity(phono3py, temperature=temperature)
 
 

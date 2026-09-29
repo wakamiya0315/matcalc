@@ -179,8 +179,15 @@ def kappa_dataset(tmp_path: Path) -> Path:
         "fc2_supercell": [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
         "fc3_supercell": [[2, 0, 0], [0, 2, 0], [0, 0, 2]],
         "q_point_mesh": [9, 9, 9],
+        "primitive_matrix": FCC_PRIMITIVE,
     }
-    phono3py = make_phono3py(cell, settings["fc2_supercell"], settings["fc3_supercell"], settings["q_point_mesh"])
+    phono3py = make_phono3py(
+        cell,
+        settings["fc2_supercell"],
+        settings["fc3_supercell"],
+        settings["q_point_mesh"],
+        primitive_matrix=FCC_PRIMITIVE,
+    )
 
     def forces(supercells: list) -> list:
         out = []
