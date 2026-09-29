@@ -188,8 +188,20 @@ Matbench Discovery pins phono3py 3.30, whose Wigner solver ("MS-SMM19") phono3py
 which needs phonopy 3.5, while the rest of this package needs phonopy 4. On PhononDB's PBE force sets the
 two solvers give conductivities that differ by 0.3 % on average, and by up to 3.4 % for halides whose
 coherence conductivity is large (their particle-like parts agree within 0.3 %; see `docs/validation.md`),
-which is why the reference is recomputed with the solver that the benchmark uses. phono3py parallelizes
-with OpenMP: set `OMP_NUM_THREADS` so that `workers` × threads fits the CPU cores.
+which is why the reference is recomputed with the solver that the benchmark uses.
+
+The conductivities, on the CPU, take almost all of the time (about 99 % of a crystal's work) and scale with
+the cores: phono3py ≥ 4.7 computes them with its Rust backend, whose threads are set by `RAYON_NUM_THREADS`
+(`OMP_NUM_THREADS` only sets those of its C code); set both so that `workers` × threads fits the cores.
+Since the MLIP's part (relaxations and single points) is short, the conductivities can run on another node:
+
+```python
+KappaBenchmark().save_forces(model, "kappa-forces.pkl")  # GPU node: steps 1-3, saves the phono3py inputs
+table = KappaBenchmark(workers=8).run_saved_forces("kappa-forces.pkl", "my-mlip")  # CPU node: step 4
+```
+
+`run_saved_forces` returns the same table as `run` (the tests check it) and refuses a file saved for another
+draw or other settings.
 
 Columns: `kappa_DFT`, and per model `kappa`, `srd`, `sre`, `srme`, `relax_steps`, `status` (`ok` or
 `censored: <reason>`). Summary: κ_SRME, κ_SRE, κ_SRD (means over the crystals), the failure rate and the rate

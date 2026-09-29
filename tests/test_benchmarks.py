@@ -258,6 +258,19 @@ def test_kappa(kappa_dataset: Path, emt_simulator: ASESimulator) -> None:
     assert summary["failure_rate"] == pytest.approx(0.5)
 
 
+def test_kappa_in_two_stages_gives_the_same_table(
+    kappa_dataset: Path, emt_simulator: ASESimulator, tmp_path: Path
+) -> None:
+    from matcalc import KappaBenchmark
+
+    table = KappaBenchmark(kappa_dataset).run(emt_simulator, "emt")
+    KappaBenchmark(kappa_dataset).save_forces(emt_simulator, tmp_path / "forces.pkl")
+    two_stages = KappaBenchmark(kappa_dataset, workers=2).run_saved_forces(tmp_path / "forces.pkl", "emt")
+    assert two_stages.equals(table)
+    with pytest.raises(ValueError, match="was saved for"):
+        KappaBenchmark(kappa_dataset, temperature=400.0).run_saved_forces(tmp_path / "forces.pkl", "emt")
+
+
 def test_settings_that_change_the_results_are_kept_in_the_checkpoint(
     discovery_dataset: Path, kappa_dataset: Path
 ) -> None:

@@ -391,6 +391,21 @@ change by 1e-12 eV/Å; that one mode moves κ by 3 W/(m K). With the DFT forces,
 BeTe's κ by less than 2e-4 (relative). Wall time for the 5 crystals: 365 s with ASE, 292 s with TorchSim,
 of which 276 and 213 s are spent waiting for the conductivities (CPU).
 
+**MACE-MP-0 on the 103 crystals**, in two stages (`save_forces` on one `gpu_h` slice, 19 min;
+`run_saved_forces` with 8 workers of 2 threads on `cpu_16`, 44 min and 40,300 CPU-seconds; a run on the
+slice alone, with its 4 cores, did not finish in 2 h 15 min): every crystal relaxes (at most 81 FIRE steps)
+and gets a conductivity, without imaginary modes. κ_SRME 0.661, κ_SRE 0.452, κ_SRD −0.181; on the 100
+crystals that the published run completed (its other 3 failed), κ_SRME 0.663 against the published 0.643.
+Crystal by crystal, κ is a median 0.5 % above the published value, within 5 % for 79 of the 100 crystals.
+
+The largest differences are of two kinds. Some crystals are ill-conditioned, like BeTe above: the same
+saved force sets give BeSe a κ of 35.6 W/(m K) on a laptop (Apple M4) and 4.4 × 10⁶ W/(m K) on the
+TSUBAME node (published: 40.2), one mode being nearly undamped. Others differ in their force sets: for NaF
+(74.6 against the published 50.3 W/(m K)) and BeO (500 and 622 against 313 and 390), the same MACE forces
+give the same κ with phono3py 3.30 as with 4.7 (NaF: 74.72 and 74.58), and the harmonic frequencies agree
+with the published ones (medians within 0.1 %), so the difference lies in the anharmonic force constants
+of Matbench Discovery's 2024 run, whose forces are not published.
+
 ## 9. Diatomics with MACE-MP-0
 
 **The metrics.** With Matbench Discovery's published MACE-MP-0 curves (`mace-mp-0-2026-06-28-diatomics.json.gz`)
