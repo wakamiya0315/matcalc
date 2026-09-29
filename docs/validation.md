@@ -391,3 +391,18 @@ change by 1e-12 eV/Å; that one mode moves κ by 3 W/(m K). With the DFT forces,
 BeTe's κ by less than 2e-4 (relative). Wall time for the 5 crystals: 365 s with ASE, 292 s with TorchSim,
 of which 276 and 213 s are spent waiting for the conductivities (CPU).
 
+## 9. Diatomics with MACE-MP-0
+
+**The metrics.** With Matbench Discovery's published MACE-MP-0 curves (`mace-mp-0-2026-06-28-diatomics.json.gz`)
+and its PBE curves, `properties.diatomics` gives the leaderboard's twelve values to their published four
+digits (for example `pbe_energy_mae` 1.457 eV, `pbe_force_mae` 2.088 eV/Å, `pbe_bond_length_error`
+0.2947 Å, `pbe_vib_freq_error` 76.04 cm⁻¹, `tortuosity` 1.279, `force_total_variation` 158.4) and the same
+coverage of the vibrational frequency (71 of 73 elements; Pa and Se fail).
+
+**The benchmark** (87 elements, 10,353 single points, one `gpu_h` slice): with TorchSim, the curves agree
+with the published ones within 1.2e-11 eV and 1.1e-9 eV/Å in the scored range of every element (the largest
+difference anywhere, at the shortest separations of W, is 1.6e-3 eV), and the summary is the leaderboard's
+in all twelve metrics. ASE gives the same curves (within 3e-12 eV of the published ones) and metrics that
+agree with TorchSim's within 1e-13, with the same status for every element. Wall time: 17.6 s with TorchSim,
+192 s with ASE (Matbench Discovery reports 269 s for its ASE run on a full H100).
+
