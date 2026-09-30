@@ -13,7 +13,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("code", choices=["upstream", "fork-ase", "fork-torchsim"])
     parser.add_argument("benchmark", choices=["equilibrium", "elasticity", "phonon", "softening", "discovery", "kappa",
-                                              "diatomics", "noncovalent", "conformers", "reactions"])
+                                              "diatomics", "noncovalent", "conformers", "reactions", "gmtkn55"])
     parser.add_argument("--model", default="mace-matpes-pbe-0",
                         help="MACE checkpoint (medium = MACE-MP-0, off-medium = MACE-OFF23 medium)")
     parser.add_argument("--n-samples", type=int, default=None)
@@ -24,6 +24,8 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--max-steps", type=int, default=None, help="phonon: maximum FIRE steps")
     parser.add_argument("--shard", default=None, help="discovery: k/n, run only the k-th of n shards (k = 0..n-1)")
+    parser.add_argument("--neutral-closed-shell", action="store_true",
+                        help="gmtkn55: only reactions of neutral closed-shell molecules")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -67,7 +69,9 @@ def main() -> None:
         options = {} if args.max_steps is None else {"max_steps": args.max_steps}
         if args.shard is not None:
             options["shard"] = tuple(int(x) for x in args.shard.split("/"))
-        if args.benchmark in ("noncovalent", "conformers", "reactions") and args.model.startswith("off-"):
+        if args.neutral_closed_shell:
+            options |= {"charges": (0, 0), "max_unpaired_electrons": 0}
+        if args.benchmark in ("noncovalent", "conformers", "reactions", "gmtkn55") and args.model.startswith("off-"):
             from mace_models import MACE_OFF_ELEMENTS
 
             options["elements"] = MACE_OFF_ELEMENTS  # the other complexes are skipped, as in MLIPAudit

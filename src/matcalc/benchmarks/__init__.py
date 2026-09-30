@@ -1,4 +1,4 @@
-"""The benchmarks (MatCalc's, three tasks of Matbench Discovery, three molecular ones) and a helper to run several."""
+"""The benchmarks (MatCalc's, three tasks of Matbench Discovery, four molecular ones) and a helper to run several."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from .diatomics import DiatomicsBenchmark
 from .discovery import DiscoveryBenchmark
 from .elasticity import ElasticityBenchmark
 from .equilibrium import EquilibriumBenchmark
+from .gmtkn55 import GMTKN55Benchmark
 from .kappa import KappaBenchmark
 from .noncovalent import NoncovalentBenchmark
 from .phonon import PhononBenchmark
@@ -33,6 +34,7 @@ BENCHMARKS: dict[str, type[Benchmark]] = {
     "noncovalent": NoncovalentBenchmark,
     "conformers": ConformerBenchmark,
     "reactions": ReactionBenchmark,
+    "gmtkn55": GMTKN55Benchmark,
 }
 """Benchmark classes by name."""
 
@@ -80,6 +82,7 @@ __all__ = [
     "DiscoveryBenchmark",
     "ElasticityBenchmark",
     "EquilibriumBenchmark",
+    "GMTKN55Benchmark",
     "KappaBenchmark",
     "Material",
     "NoncovalentBenchmark",

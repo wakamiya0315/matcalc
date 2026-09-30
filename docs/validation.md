@@ -3,8 +3,8 @@
 How the refactored code and the TorchSim simulator were checked, and how fast they are. The MLIP of the
 runs is MACE-MatPES-PBE-0 in float64, used only as a test model (it is not part of matcalc; see
 `validation/mace_models.py`); sections 7–9 use MACE-MP-0 instead, whose predictions Matbench Discovery
-publishes material by material, and sections 10 and 11 MACE-OFF23, whose results MLIPAudit publishes system
-by system. Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
+publishes material by material, and sections 10–12 MACE-OFF23, whose results MLIPAudit publishes system by
+system. Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
 (`gpu_h`); quick checks on the shared interactive node. Software: torch 2.14.0+cu126, torch-sim-atomistic
 0.6.2, moyopy 0.20.0, mace-torch 0.3.16, ase 3.29.0, pymatgen 2026.9.23, phonopy 4.6.0. Scripts are in
 [`validation/`](../validation/).
@@ -515,3 +515,37 @@ In float64, TorchSim and ASE agree within 2e-10 kcal/mol. MACE-OFF23 overestimat
 matters less here than for the other molecular benchmarks, since the molecules are small (float32 steps of
 0.006–0.023 kcal/mol) and the errors large: the float32 values differ from the float64 ones by at most
 0.19 kcal/mol. TorchSim is 13–14 times faster than ASE.
+
+## 12. GMTKN55
+
+**The data and the metric.** The GMTKN55 repository ships, for every molecule, the ORCA output of a PBEh-3c
+single point, and the reaction energies and WTMAD-2 that its evaluator computes from them
+(`_results/PBEh-3c_*.csv`). `validation/gmtkn55_check.py` gives these energies to the benchmark through a
+simulator that returns them: all 1,505 reaction energies and references agree with the published ones within
+their rounding to 0.01 kcal/mol, and WTMAD-2 recomputed from the published reaction energies is the
+published one (11.129122) and so are the six category values, within 5e-7. Unrounded, the benchmark gives
+11.128 with ⟨|ΔE|⟩ = 57.82 kcal/mol. The charge and number of unpaired electrons of all 2,462 molecules of
+the repository agree between its `.CHRG`/`.UHF` files, the `$eht` line of its `coord` files and the ORCA
+outputs, and `struc.xyz` is `coord` (in Bohr) within 4e-11 Å.
+
+**MACE-OFF23** (medium, float64; one H100 MIG 3g.47gb slice of the interactive queue), which ignores charge
+and spin:
+
+| Reactions | N | WTMAD-2 | small reactions | large reactions | barrier heights | intermolecular NCI | intramolecular NCI |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| MACE-OFF23's ten elements | 1,291 | 30.54 | 32.04 | 26.15 | 52.43 | 39.91 | 9.38 |
+| and neutral closed-shell molecules only | 809 | 8.28 | 5.59 | 3.70 | 13.66 | 15.92 | 3.56 |
+
+The ions dominate the first line: double ionization potentials (DIPCS10, MAE 628 kcal/mol), ionization
+potentials (G21IP, 268), proton affinities (PA26, 165), self-interaction-error cases (SIE4x4, 129) and ionic
+liquids (IL16, 56.5). Rowan Benchmarks lists 18.54 for MACE-OFF23 (medium) on the same normalization, between
+the two, with filters it does not state; it is a rough sanity figure only. TorchSim and ASE agree within 6e-9
+kcal/mol with the same status for every reaction.
+
+Time: 20 s for the single points with TorchSim, 45 s with ASE, plus 12 s to load the model (0.4 s for the
+data). Each of the 2,442 molecules is evaluated once, where the 1,505 reactions name 4,161 (45,080 atoms
+instead of 32,016). TorchSim's 20 s are mostly fixed costs, as timed separately on a slice of the same queue: the
+batches take 2.6 s, the model's first forward pass about 4 s and the memory probes about 10 s (7 s for a lone
+atom, 3 s for the largest molecule, of 72 atoms), which a simulator keeps for its later calls. For MACE-OFF23
+lone atoms in a 50 Å box are not cheap: about 6,000 fit on the slice, and the probe of the smallest molecule
+stops there on running out of memory, so limiting the size of the probe (tried) does not shorten it.

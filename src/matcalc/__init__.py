@@ -12,7 +12,8 @@ The benchmarks (see ``docs/benchmarks.md``):
 - ``DiatomicsBenchmark``: potential-energy curves of homonuclear dimers (PBE, Matbench Discovery);
 - ``NoncovalentBenchmark``: interaction energies of noncovalent complexes (NCI Atlas, CCSD(T)/CBS);
 - ``ConformerBenchmark``: relative energies of conformers of drug-like molecules (DLPNO-CCSD(T));
-- ``ReactionBenchmark``: barrier heights and reaction energies of organic reactions (RDB7, CCSD(T)-F12a).
+- ``ReactionBenchmark``: barrier heights and reaction energies of organic reactions (RDB7, CCSD(T)-F12a);
+- ``GMTKN55Benchmark``: main-group thermochemistry, kinetics and noncovalent interactions (GMTKN55, WTMAD-2).
 
 Each benchmark asks a *simulator* for relaxations and single points: ``ASESimulator`` works with any
 ASE calculator, ``matcalc.simulation.TorchSimSimulator`` with any TorchSim model. The MLIP itself is
@@ -37,6 +38,7 @@ from .benchmarks import (
     DiscoveryBenchmark,
     ElasticityBenchmark,
     EquilibriumBenchmark,
+    GMTKN55Benchmark,
     KappaBenchmark,
     NoncovalentBenchmark,
     PhononBenchmark,
@@ -64,6 +66,7 @@ __all__ = [
     "DiscoveryBenchmark",
     "ElasticityBenchmark",
     "EquilibriumBenchmark",
+    "GMTKN55Benchmark",
     "KappaBenchmark",
     "NoncovalentBenchmark",
     "PhononBenchmark",
