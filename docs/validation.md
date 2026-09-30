@@ -3,8 +3,8 @@
 How the refactored code and the TorchSim simulator were checked, and how fast they are. The MLIP of the
 runs is MACE-MatPES-PBE-0 in float64, used only as a test model (it is not part of matcalc; see
 `validation/mace_models.py`); sections 7–9 use MACE-MP-0 instead, whose predictions Matbench Discovery
-publishes material by material, and section 10 MACE-OFF23, whose results MLIPAudit publishes system by
-system. Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
+publishes material by material, and sections 10 and 11 MACE-OFF23, whose results MLIPAudit publishes system
+by system. Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
 (`gpu_h`); quick checks on the shared interactive node. Software: torch 2.14.0+cu126, torch-sim-atomistic
 0.6.2, moyopy 0.20.0, mace-torch 0.3.16, ase 3.29.0, pymatgen 2026.9.23, phonopy 4.6.0. Scripts are in
 [`validation/`](../validation/).
@@ -475,3 +475,43 @@ MAE 0.450), hence the advice to run these benchmarks in float64 ([benchmarks.md]
 Time: TorchSim computes the 14,650 single points of Noncovalent 7–8 times faster than ASE and the 6,745
 larger ones of Conformers 3–4 times faster; about half of its 33–46 s is the one-time memory probe of the
 smallest and the largest structure (16–20 s).
+
+## 11. Reactions with MACE-OFF23
+
+MLIPAudit's reactivity benchmark (result revision `953a4bf`) uses the 11,961 reactions of Grambow et al. with
+their ωB97X-D3/def2-TZVP energies; the benchmark uses RDB7's 11,926 of them with CCSD(T)-F12a energies. The
+reactants and transition states are the same structures, so the MLIP's barrier heights can be compared
+reaction by reaction (`validation/mlipaudit_check.py reactions`).
+
+**The reference.** RDB7's tables give barrier heights with zero-point energies of ωB97X-D3 frequencies, the
+same in its CCSD(T)-F12a and its ωB97X-D3 table. Their difference plus the electronic ωB97X-D3 barrier of
+Grambow et al. (MLIPAudit's reference) must therefore equal the electronic CCSD(T)-F12a barrier the benchmark
+reads from the Molpro outputs: it does within 1e-4 kcal/mol for 99.7 % of the reactions and within
+0.014 kcal/mol for all. This also confirms that the reactants and transition states are Grambow's structures
+and that RDB7 reports the F12a energies (the F12b energies of the same outputs are off by 0.14 ± 0.16
+kcal/mol). The two references differ far more than that: the CCSD(T)-F12a barrier is 2.4 kcal/mol lower
+than the ωB97X-D3 one for the median reaction, 3.6 kcal/mol apart on average and more than 10 kcal/mol apart
+for 6.9 % of the reactions.
+
+**The MLIP.** In float32 with ASE, 98.8 % of the barrier heights are MLIPAudit's predictions to the last bit
+and the others one float32 step of the total energy away (at most 0.023 kcal/mol); with TorchSim, up to 8
+steps (0.18 kcal/mol). Against the ωB97X-D3 reference both give MLIPAudit's MAE on the same reactions
+(17.109 kcal/mol; 17.112 published over its 11,961). The reaction energies of the 8,392 reactions with one
+product are MLIPAudit's too; those of the 3,534 reactions with two or three products differ (median 2.5
+and 4.9 kcal/mol), because RDB7 optimizes every product molecule on its own, while Grambow's product is one
+structure that holds them all.
+
+Against CCSD(T)-F12a (kcal/mol; single points of the 39,541 structures on one `gpu_h` slice):
+
+| | Barrier MAE / RMSE / ME | Reaction energy MAE / RMSE / ME | Time |
+|---|---|---|---|
+| ASE, float32 | 19.171 / 22.887 / +17.642 | 10.146 / 16.628 / +9.075 | 804 s |
+| TorchSim, float32 | 19.171 / 22.887 / +17.642 | 10.146 / 16.627 / +9.073 | 56 s |
+| ASE, float64 | 19.171 / 22.887 / +17.642 | 10.144 / 16.623 / +9.066 | 789 s |
+| TorchSim, float64 | 19.171 / 22.887 / +17.642 | 10.144 / 16.623 / +9.066 | 61 s |
+
+In float64, TorchSim and ASE agree within 2e-10 kcal/mol. MACE-OFF23 overestimates the barriers by
+17.6 kcal/mol on average: transition states lie far from the structures it was trained on. Float32 rounding
+matters less here than for the other molecular benchmarks, since the molecules are small (float32 steps of
+0.006–0.023 kcal/mol) and the errors large: the float32 values differ from the float64 ones by at most
+0.19 kcal/mol. TorchSim is 13–14 times faster than ASE.
