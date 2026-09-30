@@ -365,3 +365,84 @@ def conformer_dataset(tmp_path: Path) -> Path:
         archive.writestr(f"{root}/energies/ccsdt.txt", "\n".join(lines) + "\n")
         archive.writestr(f"{root}/geometries/CHG-charges.txt", "\n".join(charged) + "\n")
     return path
+
+
+@pytest.fixture
+def rdb7_dataset(tmp_path: Path) -> Path:
+    """An archive of Molpro outputs in RDB7's layout, with Cu and Au chains as "reactions" and EMT as reference.
+
+    ``000000``: Cu3 to one product; ``000001``: Cu3 to Cu2 + Cu; ``000002``: an Au3 reaction. The archive also
+    holds a macOS metadata file, as the published one does.
+    """
+    import io
+    import tarfile
+
+    from ase import units
+
+    from matcalc.structures import molecule_in_box
+
+    def chain(symbol: str, n: int, bonds: list[float]) -> list:
+        return molecule_in_box([symbol] * n, [[sum(bonds[:k]), 0.2 * k * k, 0.0] for k in range(n)])
+
+    def log(atoms: Atoms, energy: float) -> str:
+        rows = [
+            f" {s}  {x:14.8f}{y:14.8f}{z:14.8f}" for s, (x, y, z) in zip(atoms.symbols, atoms.positions, strict=True)
+        ]
+        return "\n".join(
+            [
+                " ***,name",
+                " memory,1152,m;",
+                " geometry={angstrom;",
+                *rows[:-1],
+                rows[-1] + "}",
+                " ",
+                " basis=cc-pvdz-f12",
+                " {hf;",
+                " maxit,300;",
+                " wf,spin=0,charge=0;}",
+                " ccsd(t)-f12;",
+                "",
+                f" !CCSD(T)-F12a total energy          {energy:.12f}",
+                f" !CCSD(T)-F12b total energy          {energy + 0.01:.12f}",
+                "",
+            ]
+        )
+
+    reactions = {
+        "000000": {
+            "r": chain("Cu", 3, [2.3, 2.3]),
+            "ts": chain("Cu", 3, [2.3, 3.0]),
+            "p": [chain("Cu", 3, [2.2, 2.6])],
+        },
+        "000001": {
+            "r": chain("Cu", 3, [2.4, 2.35]),
+            "ts": chain("Cu", 3, [2.4, 3.4]),
+            "p": [chain("Cu", 2, [2.3]), molecule_in_box(["Cu"], [[0.0, 0.0, 0.0]])],
+        },
+        "000002": {
+            "r": chain("Au", 3, [2.6, 2.6]),
+            "ts": chain("Au", 3, [2.6, 3.3]),
+            "p": [chain("Au", 3, [2.5, 2.8])],
+        },
+    }
+    path = tmp_path / "ccsdtf12_dz.tar.gz"
+    with tarfile.open(path, "w:gz") as archive:
+
+        def add(name: str, text: str) -> None:
+            data = text.encode()
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+
+        for reaction, states in reactions.items():
+            folder = f"qm_logs/rxn{reaction}"
+            products = states["p"]
+            names = (
+                [f"p{reaction}.log"] if len(products) == 1 else [f"p{reaction}_{k}.log" for k in range(len(products))]
+            )
+            for name, atoms in [(f"r{reaction}.log", states["r"]), (f"ts{reaction}.log", states["ts"])]:
+                add(f"{folder}/{name}", log(atoms, _emt_energies([atoms])[0] / units.Hartree - 100.0))
+            for name, atoms in zip(names, products, strict=True):
+                add(f"{folder}/{name}", log(atoms, _emt_energies([atoms])[0] / units.Hartree - 100.0 / len(products)))
+        add("qm_logs/rxn000000/._r000000.log", "Mac OS X metadata")
+    return path

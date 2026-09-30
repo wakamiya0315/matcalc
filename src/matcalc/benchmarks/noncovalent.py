@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 
 from matcalc.datasets import RemoteFile, download_file, sample_subset
-from matcalc.properties.molecules import KCAL_PER_MOL, interaction_energy
+from matcalc.properties.molecules import KCAL_PER_MOL, error_statistics, interaction_energy
 from matcalc.structures import molecule_in_box
 
 from ._common import OK, Benchmark, Material, failed
@@ -222,9 +222,9 @@ class NoncovalentBenchmark(Benchmark):
             model_name: The label used in ``run``.
 
         Returns:
-            Counts (``n_skipped``: unsupported elements), ``interaction_energy`` (MAE, RMSE and number of
-            complexes, kcal/mol), ``datasets`` and ``subsets`` (``"<data set>: <group>"``) with the same,
-            and the wall time per stage (s).
+            Counts (``n_skipped``: unsupported elements), ``interaction_energy`` (MAE, RMSE, mean signed
+            error ME and number of complexes, kcal/mol), ``datasets`` and ``subsets``
+            (``"<data set>: <group>"``) with the same, and the wall time per stage (s).
         """
         status = table[f"status_{model_name}"].astype(str)
         ok = (status == OK).to_numpy()
@@ -240,9 +240,9 @@ class NoncovalentBenchmark(Benchmark):
             "n_systems": len(table),
             "n_ok": int(ok.sum()),
             "n_skipped": int(status.str.startswith("skipped").sum()),
-            "interaction_energy": _errors(deviations),
-            "datasets": {name: _errors(values) for name, values in datasets.items()},
-            "subsets": {name: _errors(values) for name, values in subsets.items()},
+            "interaction_energy": error_statistics(deviations),
+            "datasets": {name: error_statistics(values) for name, values in datasets.items()},
+            "subsets": {name: error_statistics(values) for name, values in subsets.items()},
             "timings_s": dict(self.timings),
         }
 
@@ -303,10 +303,3 @@ class NoncovalentBenchmark(Benchmark):
                 )
             )
         return materials
-
-
-def _errors(deviations: Sequence[float] | pd.Series) -> dict[str, float]:
-    values = np.asarray(deviations, dtype=float)
-    if not values.size:
-        return {"MAE": float("nan"), "RMSE": float("nan"), "n": 0}
-    return {"MAE": float(np.mean(np.abs(values))), "RMSE": float(np.sqrt(np.mean(values**2))), "n": int(values.size)}

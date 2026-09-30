@@ -3,8 +3,8 @@
 The first seven compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data: the
 Hugging Face dataset [`materialyze/matcalc-bench`](https://huggingface.co/datasets/materialyze/matcalc-bench)
 (Equilibrium, Elasticity, Softening), the packaged Phonon and Kappa datasets, and Matbench Discovery's WBM
-files (Discovery) and dimer curves (Diatomics). The two molecular benchmarks (Noncovalent, Conformers) compare
-it with coupled-cluster energies of molecules, as MLIPAudit does.
+files (Discovery) and dimer curves (Diatomics). The three molecular benchmarks (Noncovalent, Conformers,
+Reactions) compare it with coupled-cluster energies of molecules, as MLIPAudit does.
 Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å³; moduli are reported in GPa; the
 molecular benchmarks report energies in kcal/mol, as their references do.
 
@@ -314,3 +314,31 @@ published results in [validation.md](validation.md), section 10):
 Columns: `energies_ref` and per model `energies` (the relative energies of the conformers in the order of
 the data, kcal/mol), `mae`, `rmse`, `spearman`, `status`, and `charge`, `n_conformers`. Summary: the means of
 `mae`, `rmse` and `spearman` over the molecules (MLIPAudit's `avg_mae`, `avg_rmse`) and the counts.
+
+## Reactions — `ReactionBenchmark` (`benchmarks/reactions.py`)
+
+Dataset: RDB7 (K. A. Spiekermann, L. Pattanaik, W. H. Green, Sci. Data 9, 417 (2022);
+[Zenodo record 6618262](https://zenodo.org/records/6618262), CC BY 4.0), the refined reactions of C. A.
+Grambow, L. Pattanaik, W. H. Green, Sci. Data 7, 137 (2020): 11,926 elementary reactions of closed-shell
+molecules with up to 7 heavy atoms (H, C, N, O; 4 to 23 atoms), found by transition-state searches from
+GDB-7 reactants. Reactants, transition states and products are optimized with ωB97X-D3/def2-TZVP (the 3,534
+reactions that break the reactant apart have 2 or 3 product molecules, each optimized on its own), and their
+energies computed with CCSD(T)-F12a/cc-pVDZ-F12. The benchmark reads geometries and energies from the Molpro
+outputs of these single points (`ccsdtf12_dz.tar.gz`, 143 MB, MD5-checked, downloaded on first use).
+
+The recipe and the metrics are those of MLIPAudit's reactivity benchmark, which uses the same reactants and
+transition states with the ωB97X-D3 energies of Grambow et al. and their product structures
+([validation.md](validation.md), section 11):
+
+1. **Single points** of the reactant, the transition state and each product molecule, every one in a 50 Å
+   periodic box (all neutral singlets); no relaxation.
+2. **Barrier height** (transition state minus reactant) and **reaction energy** (the products minus the
+   reactant) of the MLIP and of the reference, electronic energies in kcal/mol (`properties/molecules.py`;
+   the barrier heights in RDB7's tables add zero-point energies of ωB97X-D3 frequencies, which an MLIP does
+   not predict).
+
+`elements` skips reactions with other elements, as for the other molecular benchmarks.
+
+Columns: `barrier_ref`, `reaction_energy_ref`, per model `barrier`, `reaction_energy` and `status`, and
+`n_products`. Summary: MAE, RMSE and mean signed error ME (prediction minus reference, kcal/mol) of the
+barrier heights and of the reaction energies, and the counts.

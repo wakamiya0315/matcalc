@@ -7,10 +7,15 @@
   conformers OURS.csv RESULT.json
       Per molecule: the relative energy of every conformer, MAE, RMSE and Spearman correlation; the mean MAE
       and RMSE against MLIPAudit's.
+  reactions OURS.csv RESULT.json
+      Per reaction: the MLIP's barrier height (same reactant and transition state as MLIPAudit's), and the
+      reference barriers (ReactionBenchmark: CCSD(T)-F12a; MLIPAudit: the wB97X-D3 energies of Grambow et
+      al.); the reaction energies differ also in the products (RDB7: separate, reoptimized molecules).
 
 OURS.csv is written by run_one.py (column suffix "mace"); RESULT.json is MLIPAudit's result file of the model,
 https://huggingface.co/datasets/InstaDeepAI/mlipaudit-results/resolve/<revision>/<model>/<benchmark>/result.json
-with <benchmark> = noncovalent_interactions or conformer_selection (MACE-OFF23 medium: <model> = MACE-OFF_ext).
+with <benchmark> = noncovalent_interactions, conformer_selection or reactivity (MACE-OFF23 medium: <model> =
+MACE-OFF_ext).
 """
 
 import argparse
@@ -79,20 +84,51 @@ def conformers(ours: pd.DataFrame, audit: dict) -> dict:
     }
 
 
+def reactions(ours: pd.DataFrame, audit: dict) -> dict:
+    """Reaction-by-reaction differences (kcal/mol)."""
+    theirs = audit["reaction_results"]
+    ours = ours.assign(reaction=ours["reaction"].map(lambda r: f"{int(r):06d}")).set_index("reaction")
+    ok = ours["status_mace"] == "ok"
+    common = sorted(set(ours.index[ok]) & set(theirs))
+
+    def column(name: str) -> np.ndarray:
+        return ours.loc[common, name].to_numpy(dtype=float)
+
+    def published(name: str) -> np.ndarray:
+        return np.array([theirs[r][name] for r in common])
+
+    return {
+        "n_ok": int(ok.sum()),
+        "n_audit": len(theirs),
+        "n_common": len(common),
+        "barrier_difference": _stats(column("barrier_mace") - published("activation_energy_pred")),
+        "reference_barrier_cc_minus_dft": {
+            "mean": float(np.mean(column("barrier_ref") - published("activation_energy_ref"))),
+            **_stats(column("barrier_ref") - published("activation_energy_ref")),
+        },
+        "reaction_energy_difference": _stats(column("reaction_energy_mace") - published("enthalpy_of_reaction_pred")),
+        "barrier_MAE_against_dft_reference": [
+            float(np.mean(np.abs(column("barrier_mace") - published("activation_energy_ref")))),
+            float(np.mean(np.abs(published("activation_energy_pred") - published("activation_energy_ref")))),
+        ],
+        "MLIPAudit_summary": {k: audit[k] for k in audit if k.startswith(("mae_", "rmse_"))},
+    }
+
+
 def _stats(values: np.ndarray) -> dict:
     return {"max_abs": float(np.abs(values).max()), "mean_abs": float(np.abs(values).mean()), "n": int(values.size)}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("benchmark", choices=["noncovalent", "conformers"])
+    parser.add_argument("benchmark", choices=["noncovalent", "conformers", "reactions"])
     parser.add_argument("ours")
     parser.add_argument("result")
     args = parser.parse_args()
     ours = pd.read_csv(args.ours)
     with open(args.result) as f:
         audit = json.load(f)
-    report = noncovalent(ours, audit) if args.benchmark == "noncovalent" else conformers(ours, audit)
+    report = {"noncovalent": noncovalent, "conformers": conformers, "reactions": reactions}[args.benchmark](ours, audit)
     print(json.dumps(report, indent=1))
 
 

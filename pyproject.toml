@@ -7,7 +7,7 @@ authors = [
     { name = "Shyue Ping Ong", email = "shyue@nus.edu.sg" },
     { name = "Tsz Wai Ko", email = "t1ko@ucsd.edu" },
 ]
-description = "The MatCalc benchmarks (equilibrium, elasticity, phonon, softening), three Matbench Discovery tasks (discovery, kappa, diatomics) and two molecular benchmarks (noncovalent, conformers) for machine-learning interatomic potentials."
+description = "The MatCalc benchmarks (equilibrium, elasticity, phonon, softening), three Matbench Discovery tasks (discovery, kappa, diatomics) and three molecular benchmarks (noncovalent, conformers, reactions) for machine-learning interatomic potentials."
 readme = "README.md"
 requires-python = ">=3.12"
 keywords = ["benchmark", "interatomic potential", "machine learning", "materials", "phonon", "elasticity"]

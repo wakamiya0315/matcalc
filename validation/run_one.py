@@ -13,7 +13,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("code", choices=["upstream", "fork-ase", "fork-torchsim"])
     parser.add_argument("benchmark", choices=["equilibrium", "elasticity", "phonon", "softening", "discovery", "kappa",
-                                              "diatomics", "noncovalent", "conformers"])
+                                              "diatomics", "noncovalent", "conformers", "reactions"])
     parser.add_argument("--model", default="mace-matpes-pbe-0",
                         help="MACE checkpoint (medium = MACE-MP-0, off-medium = MACE-OFF23 medium)")
     parser.add_argument("--n-samples", type=int, default=None)
@@ -64,7 +64,7 @@ def main() -> None:
         simulator = (TorchSimSimulator(model, show_progress=False) if backend == "torchsim"
                      else matcalc.ASESimulator(model, show_progress=False))
         options = {} if args.max_steps is None else {"max_steps": args.max_steps}
-        if args.benchmark in ("noncovalent", "conformers") and args.model.startswith("off-"):
+        if args.benchmark in ("noncovalent", "conformers", "reactions") and args.model.startswith("off-"):
             from mace_models import MACE_OFF_ELEMENTS
 
             options["elements"] = MACE_OFF_ELEMENTS  # the other complexes are skipped, as in MLIPAudit
