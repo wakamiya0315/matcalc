@@ -150,8 +150,8 @@ def test_benchmarks_run_with_torchsim(
         assert_allclose(ts_table[f"{column}_lj"], ase_table[f"{column}_lj"], rtol=1e-3)
 
 
-def test_molecular_benchmarks_run_with_torchsim(ncia_dataset: Any, conformer_dataset: Any) -> None:
-    from matcalc import ConformerBenchmark, NoncovalentBenchmark
+def test_molecular_benchmarks_run_with_torchsim(ncia_dataset: Any, conformer_dataset: Any, rdb7_dataset: Any) -> None:
+    from matcalc import ConformerBenchmark, NoncovalentBenchmark, ReactionBenchmark
 
     model = lj_model()
     reference = ASESimulator(TorchSimModelCalculator(model), show_progress=False)
@@ -159,6 +159,7 @@ def test_molecular_benchmarks_run_with_torchsim(ncia_dataset: Any, conformer_dat
     for make, column in (
         (lambda: NoncovalentBenchmark(ncia_dataset, sets=["D442x10", "IHB100x10", "R739x5"]), "interaction_energy"),
         (lambda: ConformerBenchmark(conformer_dataset), "mae"),
+        (lambda: ReactionBenchmark(rdb7_dataset), "barrier"),
     ):
         ase_table = make().run(reference, "lj")
         ts_table = make().run(batched, "lj")

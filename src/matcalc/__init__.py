@@ -11,7 +11,8 @@ The benchmarks (see ``docs/benchmarks.md``):
 - ``KappaBenchmark``: lattice thermal conductivity at 300 K (PhononDB, Matbench Discovery's κ_SRME);
 - ``DiatomicsBenchmark``: potential-energy curves of homonuclear dimers (PBE, Matbench Discovery);
 - ``NoncovalentBenchmark``: interaction energies of noncovalent complexes (NCI Atlas, CCSD(T)/CBS);
-- ``ConformerBenchmark``: relative energies of conformers of drug-like molecules (DLPNO-CCSD(T)).
+- ``ConformerBenchmark``: relative energies of conformers of drug-like molecules (DLPNO-CCSD(T));
+- ``ReactionBenchmark``: barrier heights and reaction energies of organic reactions (RDB7, CCSD(T)-F12a).
 
 Each benchmark asks a *simulator* for relaxations and single points: ``ASESimulator`` works with any
 ASE calculator, ``matcalc.simulation.TorchSimSimulator`` with any TorchSim model. The MLIP itself is
@@ -39,6 +40,7 @@ from .benchmarks import (
     KappaBenchmark,
     NoncovalentBenchmark,
     PhononBenchmark,
+    ReactionBenchmark,
     SofteningBenchmark,
     run_benchmarks,
 )
@@ -65,6 +67,7 @@ __all__ = [
     "KappaBenchmark",
     "NoncovalentBenchmark",
     "PhononBenchmark",
+    "ReactionBenchmark",
     "RelaxResult",
     "Simulator",
     "SinglePointResult",

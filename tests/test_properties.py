@@ -296,3 +296,13 @@ def test_molecules_sit_in_a_box_much_larger_than_themselves() -> None:
     assert (water.info["charge"], water.info["spin"]) == (-1, 2)
     chain = molecule_in_box(["C"] * 30, [[1.5 * k, 0, 0] for k in range(30)])
     assert chain.cell.lengths()[0] == pytest.approx(1.5 * 29 + 40.0)
+
+
+def test_reaction_energetics_count_the_products_together() -> None:
+    from matcalc.properties.molecules import error_statistics, reaction_energetics
+
+    assert reaction_energetics(-10.0, 5.0, [-4.0, -3.0]) == {"barrier": 15.0, "reaction_energy": 3.0}
+    stats = error_statistics([1.0, -3.0])
+    assert (stats["MAE"], stats["ME"], stats["n"]) == (2.0, -1.0, 2)
+    assert stats["RMSE"] == pytest.approx(np.sqrt(5.0))
+    assert error_statistics([])["n"] == 0

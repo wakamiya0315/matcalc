@@ -393,3 +393,36 @@ def test_molecular_settings_are_kept_in_the_checkpoint(ncia_dataset: Path, confo
         NoncovalentBenchmark(ncia_dataset, sets=["S66x8"])
     assert ConformerBenchmark(conformer_dataset).run_settings() == {}
     assert ConformerBenchmark(conformer_dataset, elements=["Cu"]).run_settings() == {"elements": "Cu"}
+
+
+def test_reactions(rdb7_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from ase.calculators.emt import EMT
+
+    from matcalc import ReactionBenchmark
+    from matcalc.properties.molecules import KCAL_PER_MOL
+
+    benchmark = ReactionBenchmark(rdb7_dataset, elements={"Cu"})
+    assert [m.material_id for m in benchmark.materials] == ["000000", "000001", "000002"]
+    table = benchmark.run(emt_simulator, "emt").set_index("reaction")
+    assert table["status_emt"].tolist() == ["ok", "ok", "skipped: Au not in the elements"]
+    assert table["n_products"].tolist() == [1, 2, 1]
+    ok = table["status_emt"] == "ok"
+    # EMT against its own energies; the energies of the products are summed.
+    for quantity in ("barrier", "reaction_energy"):
+        assert table.loc[ok, f"{quantity}_emt"].tolist() == pytest.approx(
+            table.loc[ok, f"{quantity}_ref"].tolist(), abs=1e-6
+        )
+    material = benchmark.materials[1]
+    energies = []
+    for original in [material.structure, *material.settings["products"]]:
+        atoms = original.copy()
+        atoms.calc = EMT()
+        energies.append(atoms.get_potential_energy() / KCAL_PER_MOL)
+    assert table.loc["000001", "reaction_energy_emt"] == pytest.approx(energies[1] + energies[2] - energies[0])
+    assert table.loc["000001", "barrier_ref"] > 0
+    summary = benchmark.summarize(table.reset_index(), "emt")
+    assert (summary["n_reactions"], summary["n_ok"], summary["n_skipped"]) == (3, 2, 1)
+    assert summary["barrier"]["MAE"] == pytest.approx(0.0, abs=1e-6)
+    assert set(summary["reaction_energy"]) == {"MAE", "RMSE", "ME", "n"}
+    assert ReactionBenchmark(rdb7_dataset).run_settings() == {}
+    assert ReactionBenchmark(rdb7_dataset, elements=["Cu"]).run_settings() == {"elements": "Cu"}

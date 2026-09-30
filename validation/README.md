@@ -17,7 +17,7 @@ Discovery, Kappa and Diatomics benchmarks, whose predictions Matbench Discovery 
 | `phonon_dft_check.py` | V12 | The Phonon benchmark's phonopy step fed with the DFT forces of Alexandria's files: how well it gives back the DFT heat capacities and stability. |
 | `v17_phonon_symmetry.py` | V17 | The Phonon benchmark on a subset in three settings (as before 2026-09-28, the default that subtracts the residual forces, `use_symmetry=False`) for one MLIP, loaded by a `module:function` given on the command line, and the comparison of the three tables. |
 | `diatomics_curves.py` | section 9 | Diatomic curves of a MACE model (ASE or TorchSim) in Matbench Discovery's prediction format, compared point by point with its published curves. |
-| `mlipaudit_check.py` | section 10 | Noncovalent and Conformers runs against MLIPAudit's published results for the same model, complex by complex and molecule by molecule, and MLIPAudit's summary against `summarize` on the run. |
+| `mlipaudit_check.py` | sections 10–11 | Noncovalent, Conformers and Reactions runs against MLIPAudit's published results for the same model, complex by complex, molecule by molecule and reaction by reaction, and MLIPAudit's summary against `summarize` on the run. |
 | `matbench_discovery_check.py` | sections 7–8 | Discovery and Kappa runs against Matbench Discovery's published predictions, crystal by crystal; the leaderboard's κ metrics recomputed with matcalc's functions; the packaged κ reference against the published one; MP2020 corrections recomputed with the installed pymatgen. |
 
 Example (a V4-sized subset):
@@ -41,11 +41,13 @@ python matbench_discovery_check.py kappa kappa.csv mace-mp-0-2024-11-09-phonons-
 
 The molecular benchmarks with MACE-OFF23 (medium; MLIPAudit evaluated it in float32), compared with MLIPAudit's
 result files (`https://huggingface.co/datasets/InstaDeepAI/mlipaudit-results/resolve/<revision>/MACE-OFF_ext/<benchmark>/result.json`,
-`<benchmark>` = `noncovalent_interactions` or `conformer_selection`):
+`<benchmark>` = `noncovalent_interactions`, `conformer_selection` or `reactivity`):
 
 ```bash
 PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim noncovalent --model off-medium --dtype float32 --out noncovalent.csv
 python mlipaudit_check.py noncovalent noncovalent.csv noncovalent_interactions.json
 PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim conformers --model off-medium --dtype float32 --out conformers.csv
 python mlipaudit_check.py conformers conformers.csv conformer_selection.json
+PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim reactions --model off-medium --dtype float32 --out reactions.csv
+python mlipaudit_check.py reactions reactions.csv reactivity.json
 ```

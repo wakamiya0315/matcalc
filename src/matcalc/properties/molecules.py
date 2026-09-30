@@ -1,6 +1,6 @@
 """Energies of molecules and molecular complexes against quantum-chemical references, in kcal/mol.
 
-Two quantities, defined as in MLIPAudit (InstaDeep, arXiv:2511.20487), whose published results for several
+Three quantities, defined as in MLIPAudit (InstaDeep, arXiv:2511.20487), whose published results for several
 MLIPs they reproduce:
 
 - The interaction energy of a complex from a dissociation curve (energies at contact distances scaled from
@@ -9,6 +9,9 @@ MLIPs they reproduce:
 - The relative energies of the conformers of a molecule, with the conformer lowest in the reference as the
   zero of both the reference and the prediction: their mean absolute and root-mean-square errors, and the
   Spearman rank correlation of the two.
+- The barrier height and the reaction energy of an elementary reaction: the energy of the transition state
+  and the summed energy of the products, each minus the energy of the reactants (electronic energies, no
+  zero-point energy).
 """
 
 from __future__ import annotations
@@ -66,4 +69,41 @@ def conformer_errors(
         "mae": float(np.mean(np.abs(errors))),
         "rmse": float(np.sqrt(np.mean(errors**2))),
         "spearman": float(spearmanr(ref, pred).statistic),
+    }
+
+
+def reaction_energetics(
+    reactant: float, transition_state: float, products: Sequence[float] | np.ndarray
+) -> dict[str, float]:
+    """Barrier height and reaction energy of an elementary reaction.
+
+    Args:
+        reactant: Energy of the reactant (kcal/mol).
+        transition_state: Energy of the transition state (kcal/mol).
+        products: Energies of the product molecules, each on its own (kcal/mol).
+
+    Returns:
+        ``barrier``, the transition state minus the reactant, and ``reaction_energy``, the products minus the
+        reactant (kcal/mol).
+    """
+    return {"barrier": transition_state - reactant, "reaction_energy": float(np.sum(products)) - reactant}
+
+
+def error_statistics(deviations: Sequence[float] | np.ndarray) -> dict[str, float]:
+    """Summary of the deviations of predictions from their references.
+
+    Args:
+        deviations: Prediction minus reference for every system.
+
+    Returns:
+        ``MAE``, ``RMSE`` and ``ME`` (the mean signed deviation), NaN without deviations, and their number ``n``.
+    """
+    values = np.asarray(deviations, dtype=float)
+    if not values.size:
+        return {"MAE": float("nan"), "RMSE": float("nan"), "ME": float("nan"), "n": 0}
+    return {
+        "MAE": float(np.mean(np.abs(values))),
+        "RMSE": float(np.sqrt(np.mean(values**2))),
+        "ME": float(np.mean(values)),
+        "n": int(values.size),
     }
