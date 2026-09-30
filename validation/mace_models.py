@@ -15,13 +15,18 @@ import torch
 logger = logging.getLogger(__name__)
 
 MODEL = "mace-matpes-pbe-0"
+"""Default test model. ``"medium"`` is MACE-MP-0 (medium, trained on MPtrj): the model whose Matbench
+Discovery results are published, used to validate the Discovery benchmark."""
 
 
-def load_mace(backend: Literal["ase", "torchsim"], *, dtype: str = "float64", device: str | None = None) -> Any:
-    """MACE-MatPES-PBE-0 as an ASE calculator or as a TorchSim model.
+def load_mace(
+    backend: Literal["ase", "torchsim"], *, model: str = MODEL, dtype: str = "float64", device: str | None = None
+) -> Any:
+    """A MACE foundation model (default MACE-MatPES-PBE-0) as an ASE calculator or as a TorchSim model.
 
     Args:
         backend: ``"ase"`` or ``"torchsim"``.
+        model: Name of the checkpoint for ``mace_mp`` (e.g. ``"mace-matpes-pbe-0"``, ``"medium"``).
         dtype: ``"float64"`` or ``"float32"``.
         device: ``"cuda"`` or ``"cpu"`` (default: CUDA when available).
 
@@ -33,11 +38,11 @@ def load_mace(backend: Literal["ase", "torchsim"], *, dtype: str = "float64", de
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     if backend == "ase":
-        return mace_mp(model=MODEL, device=device, default_dtype=dtype)
+        return mace_mp(model=model, device=device, default_dtype=dtype)
     from torch_sim.models.mace import MaceModel
 
     return MaceModel(
-        model=download_mace_mp_checkpoint(MODEL),
+        model=download_mace_mp_checkpoint(model),
         device=torch.device(device),
         dtype=getattr(torch, dtype),
         neighbor_list_fn=GrowingNeighborList() if device == "cuda" else None,

@@ -55,7 +55,7 @@ from matcalc.properties.phonon import (
     undisplaced_supercell,
 )
 
-from ._common import OK, Benchmark, Material, failed, pool_map, split_into_parts, worker_pool
+from ._common import OK, Benchmark, Material, failed, pool_map, split_into_parts
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -219,7 +219,7 @@ class PhononBenchmark(Benchmark):
             for i, result in enumerate(relaxed)
         ]
         todo = list(jobs)
-        with worker_pool(self.workers) as pool:
+        with self.worker_pool() as pool:
             # Setting up phonopy (symmetry of the supercell) needs only the CPU.
             with self.stage("displacements"):
                 generated = dict(

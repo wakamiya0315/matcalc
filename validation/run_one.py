@@ -1,5 +1,5 @@
-"""Run one benchmark with MACE-MatPES-PBE-0 (the test model): upstream matcalc (branch upstream-main; ASE,
-n_jobs=1) or this fork (ASE or TorchSim). Writes the table (CSV) and the timings and summary (JSON next to it)."""
+"""Run one benchmark with a MACE test model (default MACE-MatPES-PBE-0): upstream matcalc (branch upstream-main;
+ASE, n_jobs=1) or this fork (ASE or TorchSim). Writes the table (CSV) and the timings and summary (JSON next to it)."""
 
 import argparse
 import json
@@ -12,7 +12,8 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("code", choices=["upstream", "fork-ase", "fork-torchsim"])
-    parser.add_argument("benchmark", choices=["equilibrium", "elasticity", "phonon", "softening"])
+    parser.add_argument("benchmark", choices=["equilibrium", "elasticity", "phonon", "softening", "discovery", "kappa"])
+    parser.add_argument("--model", default="mace-matpes-pbe-0", help="MACE checkpoint (medium = MACE-MP-0)")
     parser.add_argument("--n-samples", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", required=True)
@@ -57,7 +58,7 @@ def main() -> None:
         from mace_models import load_mace
 
         backend = "torchsim" if args.code == "fork-torchsim" else "ase"
-        model = load_mace(backend, dtype=args.dtype)
+        model = load_mace(backend, model=args.model, dtype=args.dtype)
         simulator = (TorchSimSimulator(model, show_progress=False) if backend == "torchsim"
                      else matcalc.ASESimulator(model, show_progress=False))
         options = {} if args.max_steps is None else {"max_steps": args.max_steps}
@@ -73,7 +74,7 @@ def main() -> None:
     end = time.perf_counter()
     table = table[[c for c in table.columns if not c.startswith("structure_")]]
     table.to_csv(args.out, index=False)
-    info = {"code": args.code, "dtype": args.dtype, "workers": args.workers, "max_steps": args.max_steps,
+    info = {"code": args.code, "model": args.model, "dtype": args.dtype, "workers": args.workers, "max_steps": args.max_steps,
             "benchmark": args.benchmark, "n": len(table), "setup_s": round(loaded - start, 1),
             "run_s": round(end - loaded, 1), "gpu": torch.cuda.get_device_name(0),
             "peak_gpu_mem_GiB": round(torch.cuda.max_memory_allocated() / 2**30, 2), **extra}

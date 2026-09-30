@@ -20,8 +20,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from matcalc.properties.energetics import elemental_reference_structures, formation_energy_per_atom
 from matcalc.properties.similarity import fingerprint_distance, structure_fingerprint_or_error
+from matcalc.structures import to_pmg_structure
 
-from ._common import OK, Benchmark, Material, failed, pool_map, worker_pool
+from ._common import OK, Benchmark, Material, failed, pool_map
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -122,7 +123,7 @@ class EquilibriumBenchmark(Benchmark):
         Args:
             simulator: The simulator of this run.
         """
-        elements = {element.symbol for m in self.materials for element in m.structure.composition.elements}
+        elements = {el.symbol for m in self.materials for el in to_pmg_structure(m.structure).composition.elements}
         candidates = [
             (element, structure)
             for element, structures in elemental_reference_structures(elements).items()
@@ -148,7 +149,7 @@ class EquilibriumBenchmark(Benchmark):
             Per compound: relaxed ``structure``, ``Eform`` (eV/atom), ``d``, ``status`` and
             ``relax_steps``.
         """
-        with worker_pool(self.workers) as pool:
+        with self.worker_pool() as pool:
             # The fingerprints of the DFT structures do not depend on the model; they are computed once per
             # benchmark, in the worker processes while the GPU relaxes.
             new_dft = sorted({m.material_id for m in materials} - set(self._dft_fingerprints))
@@ -159,7 +160,7 @@ class EquilibriumBenchmark(Benchmark):
                 [by_id[material_id].reference["structure"] for material_id in new_dft],
             )
             with self.stage("relax"):
-                starts = [self._displaced(material.structure) for material in materials]
+                starts = [self._displaced(to_pmg_structure(material.structure)) for material in materials]
                 relaxed = simulator.relax(starts, fmax=self.fmax, max_steps=self.max_steps)
             # Fingerprints of the relaxed compounds, in the worker processes; the first time, while the GPU
             # relaxes the elemental references.

@@ -1,4 +1,4 @@
-"""The four benchmark pipelines on tiny EMT datasets (offline, CPU)."""
+"""The benchmark pipelines on tiny EMT datasets (offline, CPU)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from matcalc import (
     SofteningBenchmark,
     run_benchmarks,
 )
+from matcalc.datasets import sample_subset
 
 from .helpers import FCC_PRIMITIVE, SOFTENING_FACTOR, phonon_entry, structure
 
@@ -110,7 +111,9 @@ def test_phonon_residual_forces_change_nothing_for_an_o3_invariant_potential(
     benchmark = PhononBenchmark(phonon_dataset, subtract_residual_forces=False)
     table = benchmark.run(emt_simulator, "emt")
     np.testing.assert_allclose(table["CV_emt"], subtracted["CV_emt"], rtol=1e-9)
-    np.testing.assert_allclose(table["min_frequency_emt"], subtracted["min_frequency_emt"], atol=1e-6)
+    # The first compound's lowest frequency is an acoustic mode at Γ: zero up to a few 1e-6 THz of numerical
+    # noise, whose sign and size depend on the platform and the phonopy version.
+    np.testing.assert_allclose(table["min_frequency_emt"], subtracted["min_frequency_emt"], atol=1e-4)
     assert "residual_force_emt" not in table.columns
     assert benchmark.summarize(table, "emt")["subtract_residual_forces"] is False
 
@@ -202,3 +205,78 @@ def test_parallel_post_processing_gives_the_same_numbers(
     serial = EquilibriumBenchmark(equilibrium_dataset).run(emt_simulator, "emt")
     parallel = EquilibriumBenchmark(equilibrium_dataset, workers=2).run(emt_simulator, "emt")
     assert np.array_equal(parallel["d_emt"], serial["d_emt"])
+
+
+def test_discovery(discovery_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from pymatgen.core import Composition
+
+    from matcalc import DiscoveryBenchmark
+
+    from .conftest import DISCOVERY_ENTRIES
+
+    benchmark = DiscoveryBenchmark(discovery_dataset)
+    table = benchmark.run(emt_simulator, "emt")
+    assert list(table["material_id"]) == [entry[0] for entry in DISCOVERY_ENTRIES]
+    assert all(status.startswith("ok") for status in table["status_emt"])
+    relaxed = emt_simulator.relax([m.structure for m in benchmark.materials], fmax=0.05, max_steps=500)
+    for (_, formula, e_form_dft, e_hull_dft, correction, _), result, row in zip(
+        DISCOVERY_ENTRIES, relaxed, table.itertuples(), strict=True
+    ):
+        composition = Composition(formula)
+        reference = sum(benchmark.reference_energies[el.symbol] * n for el, n in composition.items())
+        e_form = (result.energy - reference) / composition.num_atoms + correction
+        assert row.e_form_per_atom_emt == pytest.approx(e_form, abs=1e-10)
+        assert row.e_above_hull_emt == pytest.approx(e_hull_dft + e_form - e_form_dft, abs=1e-10)
+        assert row.rmsd_emt < 0.2  # EMT relaxes the perturbed start back towards the reference cell
+    summary = benchmark.summarize(table, "emt")
+    full, unique = summary["discovery"]["full_test_set"], summary["discovery"]["unique_prototypes"]
+    assert full["TP"] + full["FP"] + full["TN"] + full["FN"] == 4
+    assert unique["TP"] + unique["FP"] + unique["TN"] + unique["FN"] == 3
+    assert summary["geo_opt"]["symprec=1e-2"]["n_structures"] == 4
+    assert summary["timings_s"]["relax"] > 0
+
+    subset = DiscoveryBenchmark(discovery_dataset, n_samples=2, seed=3)
+    ids = [entry[0] for entry in DISCOVERY_ENTRIES]
+    assert [m.material_id for m in subset.materials] == sample_subset(ids, 2, 3)
+
+
+def test_kappa(kappa_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from matcalc import KappaBenchmark
+
+    benchmark = KappaBenchmark(kappa_dataset, workers=1)
+    table = benchmark.run(emt_simulator, "emt")
+    ok, censored = table.iloc[0], table.iloc[1]
+    assert ok["status_emt"] == "ok"
+    # EMT against its own reference. Phonon lifetimes on a q-point mesh are not continuous in the input:
+    # the 1e-16 A the relaxation moves the atoms change kappa by up to about 1 % here.
+    assert ok["kappa_emt"] == pytest.approx(ok["kappa_DFT"], rel=0.03)
+    assert ok["srme_emt"] < 0.05
+    assert censored["status_emt"] == "censored: space group 221 -> 225"
+    assert censored["srme_emt"] == 2.0
+    summary = benchmark.summarize(table, "emt")
+    assert summary["kappa_SRME"] == pytest.approx((ok["srme_emt"] + 2.0) / 2)
+    assert summary["failure_rate"] == pytest.approx(0.5)
+
+
+def test_kappa_in_two_stages_gives_the_same_table(
+    kappa_dataset: Path, emt_simulator: ASESimulator, tmp_path: Path
+) -> None:
+    from matcalc import KappaBenchmark
+
+    table = KappaBenchmark(kappa_dataset).run(emt_simulator, "emt")
+    KappaBenchmark(kappa_dataset).save_forces(emt_simulator, tmp_path / "forces.pkl")
+    two_stages = KappaBenchmark(kappa_dataset, workers=2).run_saved_forces(tmp_path / "forces.pkl", "emt")
+    assert two_stages.equals(table)
+    with pytest.raises(ValueError, match="was saved for"):
+        KappaBenchmark(kappa_dataset, temperature=400.0).run_saved_forces(tmp_path / "forces.pkl", "emt")
+
+
+def test_settings_that_change_the_results_are_kept_in_the_checkpoint(
+    discovery_dataset: Path, kappa_dataset: Path
+) -> None:
+    from matcalc import DiscoveryBenchmark, KappaBenchmark
+
+    assert DiscoveryBenchmark(discovery_dataset).run_settings() == {}
+    assert DiscoveryBenchmark(discovery_dataset, fmax=0.02).run_settings() == {"fmax": "0.02"}
+    assert KappaBenchmark(kappa_dataset).run_settings() == {}
+    assert KappaBenchmark(kappa_dataset, temperature=500.0).run_settings() == {"temperature": "500.0"}

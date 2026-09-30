@@ -13,7 +13,7 @@ import pytest
 from ase.calculators.calculator import Calculator, all_changes
 from numpy.testing import assert_allclose
 
-from matcalc import ASESimulator, ElasticityBenchmark, SofteningBenchmark
+from matcalc import ASESimulator, DiscoveryBenchmark, ElasticityBenchmark, SofteningBenchmark
 
 from .helpers import structure
 
@@ -128,13 +128,19 @@ def test_max_steps_is_respected() -> None:
     assert not result.converged
 
 
-def test_benchmarks_run_with_torchsim(elasticity_dataset: Any, softening_dataset: Any) -> None:
+def test_benchmarks_run_with_torchsim(elasticity_dataset: Any, softening_dataset: Any, discovery_dataset: Any) -> None:
     model = lj_model()
     assert isinstance(as_simulator(model), TorchSimSimulator)
     reference = ASESimulator(TorchSimModelCalculator(model), show_progress=False)
     batched = TorchSimSimulator(model, show_progress=False)
-    for benchmark, column in ((ElasticityBenchmark, "K_vrh"), (SofteningBenchmark, "softening_scale")):
-        dataset = elasticity_dataset if benchmark is ElasticityBenchmark else softening_dataset
+    datasets = {ElasticityBenchmark: elasticity_dataset, SofteningBenchmark: softening_dataset}
+    datasets[DiscoveryBenchmark] = discovery_dataset
+    for benchmark, column in (
+        (ElasticityBenchmark, "K_vrh"),
+        (SofteningBenchmark, "softening_scale"),
+        (DiscoveryBenchmark, "e_form_per_atom"),
+    ):
+        dataset = datasets[benchmark]
         ase_table = benchmark(dataset).run(reference, "lj")
         ts_table = benchmark(dataset).run(batched, "lj")
         assert list(ts_table["status_lj"]) == list(ase_table["status_lj"])

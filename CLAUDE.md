@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this fork is
 
 A fork of materialyzeai/matcalc reduced to the four benchmarks (Equilibrium, Elasticity, Phonon,
-Softening). `main` is this fork (the refactoring and the TorchSim simulator); changes reach it through
+Softening), plus two Matbench Discovery tasks (Discovery: WBM stability and geometry; Kappa: κ_SRME). `main` is this fork (the refactoring and the TorchSim simulator); changes reach it through
 pull requests from feature branches, and CI (`.github/workflows/`) runs ruff, mypy and the CPU tests on
 them. `upstream-main` mirrors upstream's `main` and is never committed to (update it with
 `git fetch upstream && git push origin upstream/main:upstream-main`). Equilibrium, Elasticity and Softening
@@ -26,6 +26,9 @@ pytest tests                        # fast, offline, CPU (EMT and Lennard-Jones 
 ruff check src tests && ruff format --check src tests
 mypy -p matcalc
 python scripts/build_phonon_dataset.py temp/alexandria src/matcalc/benchmarks/data/alexandria-pbe-phonon.json.gz
+python scripts/build_kappa_dataset.py temp/phonondb-pbe temp/matbench-discovery/<structures>.extxyz \
+    temp/matbench-discovery/<published kappas>.json.gz src/matcalc/benchmarks/data/phonondb-pbe-kappa.json.gz \
+    --workers 4 --cache temp/kappa-cache   # about 45 min on 10 cores; the cache keeps finished compounds
 ```
 
 `temp/` (git-ignored) holds downloads such as Alexandria's phonopy files. Heavy runs and GPU tests are done
@@ -39,10 +42,13 @@ benchmark with MACE.
   and seeded subsampling, chunked `run()` with a JSON checkpoint (resume skips finished material ids), the
   result table (`<quantity>_DFT`, `<quantity>_<model>`, `status_<model>`), `summarize()` and per-stage
   timings (`with self.stage(name):`). `Material.settings` carries DFT settings a benchmark reuses.
-- `benchmarks/{equilibrium,elasticity,phonon,softening}.py` — one benchmark each. `read_entries()` parses
+- `benchmarks/{equilibrium,elasticity,phonon,softening,discovery,kappa}.py` — one benchmark each. `read_entries()` parses
   the dataset; `evaluate(materials, simulator)` is the recipe: stages over all materials of a chunk.
   `benchmarks/data/alexandria-pbe-phonon.json.gz` is the Phonon dataset (unit cells, supercell and
-  primitive matrices, displacements, C_V and stability of the DFT calculations).
+  primitive matrices, displacements, C_V and stability of the DFT calculations);
+  `benchmarks/data/phonondb-pbe-kappa.json.gz` the Kappa dataset (PhononDB cells and the PBE conductivity
+  recomputed with the phono3py the benchmark uses). Discovery reads Matbench Discovery's Figshare files
+  (`datasets.download_figshare_file`, MD5-checked) and keeps its 257,000 structures as ASE `Atoms`.
 - `properties/` — physics as pure functions with no model code (elastic fit, phonopy, formation energy,
   softening scale, fingerprints). Keep them independent of the simulator.
 - `simulation/` — the simulator interface (`relax`, `single_point`, result dataclasses in `base.py`) and
@@ -60,7 +66,8 @@ benchmark with MACE.
   processes (`pool_map`), overlapping with the GPU: single points are computed in parts
   (`split_into_parts`) and the CPU work of one part runs while the GPU computes the next. Scripts that use
   `workers > 1` need an `if __name__ == "__main__":` guard.
-- `datasets.py` (HF download, `sample_subset`); `scripts/build_phonon_dataset.py`.
+- `datasets.py` (Hugging Face and Figshare downloads, `sample_subset`); `scripts/build_phonon_dataset.py`,
+  `scripts/build_kappa_dataset.py`.
 
 ## Conventions
 

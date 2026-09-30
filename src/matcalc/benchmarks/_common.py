@@ -1,8 +1,9 @@
-"""What the four benchmarks share: dataset rows, resumable runs, result tables and summaries.
+"""What the benchmarks share: dataset rows, resumable runs, result tables and summaries.
 
 Each benchmark subclass states its science in two methods:
 
-- ``read_entries`` turns the raw dataset into ``Material`` records;
+- ``read_entries`` turns the raw dataset into ``Material`` records (a benchmark whose data are several
+  files, such as Discovery, overrides ``load_materials`` instead);
 - ``evaluate`` computes the MLIP's predictions for a list of materials, stage by stage.
 
 ``Benchmark.run`` does the bookkeeping around them: it splits the materials into chunks, saves the
@@ -12,6 +13,7 @@ and returns a table with the DFT reference values next to the predictions.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import multiprocessing
 import time
@@ -30,6 +32,7 @@ from matcalc.simulation import as_simulator
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Sequence
 
+    from ase import Atoms
     from pymatgen.core import Structure
 
     from matcalc.simulation import Simulator
@@ -47,7 +50,8 @@ class Material:
     Attributes:
         material_id: Identifier used by the dataset (e.g. ``mp-149``).
         formula: Chemical formula.
-        structure: Input structure (DFT-relaxed; for Softening, the first high-energy frame).
+        structure: Input structure (DFT-relaxed; for Softening, the first high-energy frame; for
+            Discovery, the unrelaxed prototype).
         reference: DFT reference data of this material; keys depend on the benchmark.
         settings: Settings of the DFT calculation that the benchmark reuses (Phonon: supercell and
             displacements).
@@ -55,13 +59,13 @@ class Material:
 
     material_id: str
     formula: str
-    structure: Structure
+    structure: Structure | Atoms
     reference: dict[str, Any] = field(default_factory=dict)
     settings: dict[str, Any] = field(default_factory=dict)
 
 
 class Benchmark:
-    """Common driver of the four benchmarks.
+    """Common driver of the benchmarks.
 
     Attributes:
         dataset: Dataset file name on Hugging Face, or a local ``Path``.
@@ -110,8 +114,17 @@ class Benchmark:
         self.n_samples = n_samples
         self.seed = seed
         self.workers = workers
-        self.materials = sample_subset(self.read_entries(load_benchmark_data(self.dataset)), n_samples, seed)
+        self.materials = self.load_materials()
         self.timings: dict[str, float] = {}
+        self._pool: ProcessPoolExecutor | None = None
+
+    def load_materials(self) -> list[Material]:
+        """The materials of this run: all entries of the dataset, or a random draw of ``n_samples`` of them.
+
+        Returns:
+            The materials, in the order they were drawn.
+        """
+        return sample_subset(self.read_entries(load_benchmark_data(self.dataset)), self.n_samples, self.seed)
 
     def read_entries(self, raw: Any) -> list[Material]:
         """Turn the raw dataset into ``Material`` records (implemented by each benchmark).
@@ -132,6 +145,11 @@ class Benchmark:
             does not resume it.
         """
         return {}
+
+    def _changed_settings(self, *names: str) -> dict[str, str]:
+        """The attributes among ``names`` whose value differs from the default of the same argument of ``__init__``."""
+        defaults = inspect.signature(type(self).__init__).parameters
+        return {name: str(getattr(self, name)) for name in names if getattr(self, name) != defaults[name].default}
 
     def prepare(self, simulator: Simulator, cache: dict[str, Any]) -> None:
         """Work shared by all materials, done once before the first chunk (default: nothing).
@@ -188,15 +206,22 @@ class Benchmark:
         size = chunk_size or (
             self.batched_chunk_size if getattr(simulator, "batched", False) else self.default_chunk_size
         )
-        for start in range(0, len(todo), size):
-            chunk = todo[start : start + size]
-            predictions = self.evaluate(chunk, simulator)
-            checkpoint.rows.extend(
-                self._row(material, prediction, model_name)
-                for material, prediction in zip(chunk, predictions, strict=True)
-            )
-            checkpoint.save()
-            logger.info("%s: %d/%d materials done", self.name, len(finished) + start + len(chunk), len(self.materials))
+        # The worker processes are started once for all chunks (each start imports matcalc anew).
+        with worker_pool(self.workers) as pool:
+            self._pool = pool
+            try:
+                for start in range(0, len(todo), size):
+                    chunk = todo[start : start + size]
+                    predictions = self.evaluate(chunk, simulator)
+                    checkpoint.rows.extend(
+                        self._row(material, prediction, model_name)
+                        for material, prediction in zip(chunk, predictions, strict=True)
+                    )
+                    checkpoint.save()
+                    done = len(finished) + start + len(chunk)
+                    logger.info("%s: %d/%d materials done", self.name, done, len(self.materials))
+            finally:
+                self._pool = None
         return self._table(checkpoint.rows)
 
     def summarize(self, table: pd.DataFrame, model_name: str) -> dict[str, Any]:
@@ -225,6 +250,19 @@ class Benchmark:
                 summary[quantity] = {"mean": float(values.mean()), "std": float(values.std(ddof=0)), "n": len(values)}
         summary["timings_s"] = dict(self.timings)
         return summary
+
+    @contextmanager
+    def worker_pool(self) -> Iterator[ProcessPoolExecutor | None]:
+        """The worker processes for CPU work: those of the current ``run``, or new ones for one ``evaluate``.
+
+        Yields:
+            The pool (``None`` with one worker).
+        """
+        if self._pool is not None:
+            yield self._pool
+            return
+        with worker_pool(self.workers) as pool:
+            yield pool
 
     @contextmanager
     def stage(self, name: str) -> Iterator[None]:

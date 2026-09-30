@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
+import logging
 import random
+import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +20,59 @@ from .config import BENCHMARK_DATA_DIR, BENCHMARK_HF_REPO_ID
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+logger = logging.getLogger(__name__)
+
+FIGSHARE_DOWNLOAD_URL = "https://ndownloader.figshare.com/files/{file_id}"
+"""Direct download address of a Figshare file (``figshare.com/ndownloader`` answers scripts with an empty page)."""
+
+
+@dataclass(frozen=True)
+class FigshareFile:
+    """A file published on Figshare, identified by its file id and checked by its MD5 checksum.
+
+    Attributes:
+        file_id: Figshare file id (the number in ``figshare.com/files/<id>``).
+        name: File name in the local cache.
+        md5: MD5 checksum of the published file.
+    """
+
+    file_id: int
+    name: str
+    md5: str
+
+
+def download_figshare_file(file: FigshareFile, subdirectory: str = "figshare") -> Path:
+    """Download a Figshare file once into the cache (``BENCHMARK_DATA_DIR/<subdirectory>``).
+
+    Args:
+        file: The file.
+        subdirectory: Folder of the cache that holds the file.
+
+    Returns:
+        Path of the cached file.
+
+    Raises:
+        OSError: If the downloaded file does not have the published MD5 checksum.
+    """
+    path = BENCHMARK_DATA_DIR / subdirectory / file.name
+    if path.exists():
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(f"~{path.name}")
+    url = FIGSHARE_DOWNLOAD_URL.format(file_id=file.file_id)
+    logger.info("Downloading %s from %s", file.name, url)
+    request = urllib.request.Request(url, headers={"User-Agent": "matcalc"})  # noqa: S310 - fixed https address
+    digest = hashlib.md5()  # noqa: S324 - checksum published by Figshare, not a security measure
+    with urllib.request.urlopen(request) as response, partial.open("wb") as out:  # noqa: S310
+        while chunk := response.read(1 << 20):
+            digest.update(chunk)
+            out.write(chunk)
+    if digest.hexdigest() != file.md5:
+        partial.unlink()
+        raise OSError(f"{file.name}: MD5 {digest.hexdigest()} differs from the published {file.md5}; try again")
+    partial.replace(path)
+    return path
 
 
 def list_benchmark_files() -> list[str]:

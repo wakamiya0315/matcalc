@@ -99,7 +99,7 @@ class Simulator(Protocol):
 
     def relax(
         self,
-        structures: Sequence[Structure],
+        structures: Sequence[Structure | Atoms],
         *,
         fmax: float,
         max_steps: int,

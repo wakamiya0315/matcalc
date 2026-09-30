@@ -4,8 +4,9 @@ import numpy as np
 import pytest
 from ase.calculators.emt import EMT
 from numpy.testing import assert_allclose
-from pymatgen.core import Composition
+from pymatgen.core import Composition, Lattice, Structure
 from pymatgen.core.elasticity import ElasticTensor
+from pymatgen.entries.compatibility import MaterialsProject2020Compatibility
 from scipy.optimize import curve_fit
 
 from matcalc.properties.elasticity import fit_elastic_tensor, strained_structures
@@ -21,6 +22,7 @@ from matcalc.properties.phonon import (
     undisplaced_supercell,
 )
 from matcalc.properties.softening import softening_scale
+from matcalc.properties.stability import geometry_metrics, mp2020_correction_change, stability_metrics
 
 from .helpers import FCC_PRIMITIVE, structure
 
@@ -172,3 +174,64 @@ def test_strained_cells_are_those_of_pymatgen() -> None:
         assert_allclose(atoms.cell.array, reference.lattice.matrix, atol=1e-12)
         assert_allclose(atoms.positions, reference.cart_coords, atol=1e-12)
         assert list(atoms.numbers) == list(reference.atomic_numbers)
+
+
+def test_stability_metrics_count_missing_predictions_as_unstable() -> None:
+    true = np.array([-0.1, -0.05, 0.0, 0.2, 0.3, 0.02])
+    pred = np.array([-0.2, 0.1, np.nan, 0.1, -0.01, 0.05])  # TP, FN, FN (missing), TN, FP, TN
+    metrics = stability_metrics(true, pred)
+    assert (metrics["TP"], metrics["FN"], metrics["FP"], metrics["TN"]) == (1, 2, 1, 2)
+    assert metrics["Precision"] == pytest.approx(0.5)
+    assert metrics["Recall"] == pytest.approx(1 / 3)
+    assert metrics["F1"] == pytest.approx(0.4)
+    assert metrics["DAF"] == pytest.approx(0.5 / 0.5)
+    assert metrics["missing"] == 1
+    errors = np.array([-0.1, 0.15, -0.1, -0.31, 0.03])
+    assert metrics["MAE"] == pytest.approx(np.mean(np.abs(errors)))
+    assert metrics["RMSE"] == pytest.approx(np.sqrt(np.mean(errors**2)))
+    present = ~np.isnan(pred)
+    total = np.sum((true[present] - true[present].mean()) ** 2)
+    assert metrics["R2"] == pytest.approx(1 - np.sum(errors**2) / total)
+    assert stability_metrics(true, pred, prevalence=0.25)["DAF"] == pytest.approx(2.0)
+
+
+def test_geometry_metrics_follow_matbench_discovery() -> None:
+    metrics = geometry_metrics(
+        rmsd=[0.01, np.nan, 0.03, 0.02],
+        space_groups=[225, 221, 12, np.nan],
+        reference_space_groups=[225, 225, 2, 221],
+        n_operations=[48, 48, 4, np.nan],
+        reference_n_operations=[48, 192, 2, 48],
+    )
+    assert metrics["rmsd"] == pytest.approx((0.01 + 1.0 + 0.03 + 0.02) / 4)  # unmatched counts as 1
+    assert metrics["n_structures"] == 3
+    assert metrics["symmetry_match"] == pytest.approx(1 / 3)
+    assert metrics["symmetry_decrease"] == pytest.approx(1 / 3)
+    assert metrics["symmetry_increase"] == pytest.approx(1 / 3)
+    assert metrics["n_sym_ops_mae"] == pytest.approx((0 + 144 + 2) / 3)
+
+
+def test_mp2020_correction_change_follows_the_oxide_type() -> None:
+    def li2o2(o_o: float) -> Structure:  # two O atoms o_o apart along z
+        return Structure(
+            Lattice.cubic(6.0),
+            ["Li", "Li", "O", "O"],
+            [[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0.5, 0, 0.5 + o_o / 6]],
+        )
+
+    parameters = {
+        "run_type": "GGA",
+        "is_hubbard": False,
+        "hubbards": {},
+        "potcar_symbols": ["PAW_PBE Li_sv 10Sep2004", "PAW_PBE O 08Apr2002"],
+        "potcar_spec": [
+            {"titel": "PAW_PBE Li_sv 10Sep2004", "hash": None},
+            {"titel": "PAW_PBE O 08Apr2002", "hash": None},
+        ],
+    }
+    peroxide, oxide = li2o2(1.5), li2o2(2.8)
+    correction = MaterialsProject2020Compatibility().comp_correction
+    change = mp2020_correction_change(oxide, peroxide, -20.0, parameters)
+    assert change == pytest.approx(2 * (correction["oxide"] - correction["peroxide"]))
+    assert mp2020_correction_change(li2o2(1.45), peroxide, -20.0, parameters) == 0
+    assert mp2020_correction_change(peroxide, oxide, -20.0, parameters) == pytest.approx(-change)

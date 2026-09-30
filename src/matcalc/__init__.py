@@ -1,11 +1,14 @@
 """MatCalc benchmarks: compare a machine-learning interatomic potential (MLIP) with DFT.
 
-Four benchmarks are provided (see ``docs/benchmarks.md``):
+The benchmarks (see ``docs/benchmarks.md``):
 
 - ``EquilibriumBenchmark``: relaxed structures and formation energies (WBM, PBE);
 - ``ElasticityBenchmark``: bulk and shear moduli (Materials Project, PBE);
 - ``PhononBenchmark``: heat capacity at 300 K from harmonic phonons (Alexandria, PBE);
-- ``SofteningBenchmark``: systematic softening of forces on high-energy configurations (WBM).
+- ``SofteningBenchmark``: systematic softening of forces on high-energy configurations (WBM);
+- ``DiscoveryBenchmark``: stability of hypothetical crystals and their relaxed geometry (WBM, Matbench
+  Discovery);
+- ``KappaBenchmark``: lattice thermal conductivity at 300 K (PhononDB, Matbench Discovery's κ_SRME).
 
 Each benchmark asks a *simulator* for relaxations and single points: ``ASESimulator`` works with any
 ASE calculator, ``matcalc.simulation.TorchSimSimulator`` with any TorchSim model. The MLIP itself is
@@ -25,8 +28,10 @@ from importlib.metadata import PackageNotFoundError, version
 from .benchmarks import (
     BENCHMARKS,
     Benchmark,
+    DiscoveryBenchmark,
     ElasticityBenchmark,
     EquilibriumBenchmark,
+    KappaBenchmark,
     PhononBenchmark,
     SofteningBenchmark,
     run_benchmarks,
@@ -46,8 +51,10 @@ __all__ = [
     "BENCHMARKS",
     "ASESimulator",
     "Benchmark",
+    "DiscoveryBenchmark",
     "ElasticityBenchmark",
     "EquilibriumBenchmark",
+    "KappaBenchmark",
     "PhononBenchmark",
     "RelaxResult",
     "Simulator",
