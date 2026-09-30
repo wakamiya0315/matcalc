@@ -35,7 +35,7 @@ from ase import Atoms
 from phonopy import Phonopy
 from phonopy.harmonic.dynmat_to_fc import get_commensurate_points
 from phonopy.phonon.thermal_properties import ThermalProperties
-from phonopy.units import Kb, THzToEv
+from phonopy.physical_units import get_physical_units
 from pymatgen.io.phonopy import get_phonopy_structure
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 MESH_CHUNK_BYTES = 2**28
 """Dynamical matrices held at once while the frequencies on the q-point mesh are computed (256 MiB)."""
 
-IMAGINARY_THRESHOLD_THZ = 50.0 * Kb / THzToEv
+IMAGINARY_THRESHOLD_THZ = 50.0 * get_physical_units().KB / get_physical_units().THzToEv
 """Frequencies below minus this (the frequency of 50 K, 1.04 THz) count as imaginary modes, as in the
 stability criterion of the DFT reference (A. Loew et al., npj Comput. Mater. 2025)."""
 

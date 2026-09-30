@@ -99,7 +99,7 @@ def test_compact_force_constants_give_the_same_heat_capacity() -> None:
     full.produce_force_constants()
     full.run_mesh([20, 20, 20], with_eigenvectors=True)
     full.run_thermal_properties(temperatures=[300.0])
-    assert harmonic.heat_capacity == pytest.approx(full.get_thermal_properties_dict()["heat_capacity"][0], rel=1e-8)
+    assert harmonic.heat_capacity == pytest.approx(full.thermal_properties.heat_capacity[0], rel=1e-8)
     assert 0.9 * 3 * 8.314 < harmonic.heat_capacity < 3 * 8.314  # one atom per primitive cell
     assert harmonic.dynamically_stable
 

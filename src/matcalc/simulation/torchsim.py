@@ -302,8 +302,12 @@ class TorchSimSimulator:
         self.capacities: list[float] = []
         if model.device.type == "cuda":
             # Batches of varying size fragment PyTorch's CUDA cache (up to a third of the GPU was seen
-            # reserved but unusable); expandable segments avoid that.
-            torch.cuda.memory._set_allocator_settings("expandable_segments:True")  # noqa: SLF001
+            # reserved but unusable); expandable segments avoid that. The setting has no public API once CUDA is
+            # initialized; torch 2.14 deprecates torch.cuda.memory._set_allocator_settings in favour of this one.
+            set_allocator_settings = getattr(torch._C, "_accelerator_setAllocatorSettings", None)  # noqa: SLF001
+            if set_allocator_settings is None:  # older torch
+                set_allocator_settings = torch.cuda.memory._set_allocator_settings  # noqa: SLF001
+            set_allocator_settings("expandable_segments:True")
         self._measures_memory = model.device.type == "cuda"
         # Per stress setting (on/off): probes of the smallest and the largest structure measured so far, and
         # the fraction of the probed memory batches may use (lowered after running out of memory).
