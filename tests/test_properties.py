@@ -264,3 +264,35 @@ def test_diatomic_metrics_of_a_morse_curve() -> None:
     assert wall_radius(r, energies, 1.0) == pytest.approx(r_e - np.log(1 + np.sqrt(1.0 / depth)) / a, abs=0.01)
     # H2: a curvature of 35.9 eV/Å² (575 N/m) is the measured 4401 cm⁻¹
     assert vibrational_wavenumber("H", 35.9) == pytest.approx(4401, rel=0.01)
+
+
+def test_interaction_energy_is_the_depth_of_the_well_below_the_separated_limit() -> None:
+    from matcalc.properties.molecules import interaction_energy
+
+    distances = [0.8, 1.0, 1.5, 2.0, 1.25]  # in any order
+    energies = [5.0, -3.0, -1.0, -0.5, -2.0]
+    assert interaction_energy(distances, energies) == pytest.approx(-2.5)
+    assert interaction_energy(distances, energies, repulsive=True) == pytest.approx(5.5)
+
+
+def test_conformer_errors_count_from_the_conformer_lowest_in_the_reference() -> None:
+    from matcalc.properties.molecules import conformer_errors
+
+    errors = conformer_errors([1.0, 0.0, 2.0], [11.5, 10.0, 13.0])  # relative: [1.5, 0, 3] against [1, 0, 2]
+    assert errors["mae"] == pytest.approx(0.5)
+    assert errors["rmse"] == pytest.approx(np.sqrt((0.25 + 1.0) / 3))
+    assert errors["spearman"] == pytest.approx(1.0)
+    assert conformer_errors([0.0, 1.0, 2.0], [0.0, 2.0, 1.0])["spearman"] == pytest.approx(0.5)
+
+
+def test_molecules_sit_in_a_box_much_larger_than_themselves() -> None:
+    from matcalc.structures import MOLECULE_BOX, molecule_in_box
+
+    water = molecule_in_box(["O", "H", "H"], [[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]], charge=-1, multiplicity=2)
+    assert water.pbc.all()
+    assert water.cell.lengths() == pytest.approx([MOLECULE_BOX] * 3)
+    middle = (water.positions.min(axis=0) + water.positions.max(axis=0)) / 2
+    assert middle == pytest.approx(water.cell.lengths() / 2)
+    assert (water.info["charge"], water.info["spin"]) == (-1, 2)
+    chain = molecule_in_box(["C"] * 30, [[1.5 * k, 0, 0] for k in range(30)])
+    assert chain.cell.lengths()[0] == pytest.approx(1.5 * 29 + 40.0)

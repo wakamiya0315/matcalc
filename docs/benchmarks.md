@@ -1,10 +1,21 @@
 # The benchmarks
 
-All seven compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data: the
+The first seven compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data: the
 Hugging Face dataset [`materialyze/matcalc-bench`](https://huggingface.co/datasets/materialyze/matcalc-bench)
 (Equilibrium, Elasticity, Softening), the packaged Phonon and Kappa datasets, and Matbench Discovery's WBM
-files (Discovery) and dimer curves (Diatomics).
-Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å³; moduli are reported in GPa.
+files (Discovery) and dimer curves (Diatomics). The two molecular benchmarks (Noncovalent, Conformers) compare
+it with coupled-cluster energies of molecules, as MLIPAudit does.
+Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å³; moduli are reported in GPa; the
+molecular benchmarks report energies in kcal/mol, as their references do.
+
+The molecular benchmarks measure energy differences of a fraction of a kcal/mol to a few kcal/mol between
+structures whose total energies are large when an MLIP's energies include the atomic energies of
+all-electron quantum chemistry, as for MLIPs trained on molecular data (with MACE-OFF23, about 1.5·10⁴ eV for
+a typical complex and 3.4·10⁴ eV for a typical conformer, up to 3.5·10⁵ eV). In float32 such a total energy
+is a whole multiple of 0.01–0.09 kcal/mol for most of these structures (up to 0.36 kcal/mol for the largest
+conformers and 0.72 kcal/mol for the heaviest complexes), and the order in which a GPU sums the atomic
+energies moves it by several of these steps. **Evaluate the MLIP in float64 for the molecular benchmarks**;
+results in float32, such as MLIPAudit's, carry this rounding ([validation.md](validation.md), section 10).
 
 Every benchmark is a sequence of stages over *all* materials of a chunk, and only two operations touch the
 MLIP: `relax` and `single_point` of a simulator (`src/matcalc/simulation/`). Relaxations use the FIRE
@@ -241,3 +252,65 @@ Columns: per model, the twelve metrics and `status`. Summary: the mean of each m
 have it, and `pbe_vib_freq_coverage`: how many of the elements whose PBE curve has a vibrational frequency
 got a frequency error.
 
+## Noncovalent — `NoncovalentBenchmark` (`benchmarks/noncovalent.py`)
+
+Dataset: the dissociation curves of the Non-Covalent Interactions Atlas (J. Řezáč and co-workers,
+[nciatlas.org](http://www.nciatlas.org), CC BY 4.0): the six packaged sets of
+[Honza-R/NCIAtlas](https://github.com/Honza-R/NCIAtlas) at commit `1816bfc` (15 MB, MD5-checked, downloaded
+on first use). 2,206 complexes of two molecules, neutral or ionic, each at 10 separations (the closest
+contact scaled from 0.8 to 2.0 times its equilibrium length) or, for the repulsive contacts of R739x5, at 5
+separations (scaled from 1.0 to 1.25), with CCSD(T)/CBS interaction energies at every point.
+
+| Set | Complexes | Data set in the summary | Reference |
+|---|---:|---|---|
+| D442x10 | 442 | Dispersion | J. Řezáč, Phys. Chem. Chem. Phys. 24, 14780 (2022) |
+| HB375x10 | 375 | Hydrogen bonds | J. Řezáč, J. Chem. Theory Comput. 16, 2355 (2020) |
+| HB300SPXx10 | 300 | Hydrogen bonds | J. Řezáč, J. Chem. Theory Comput. 16, 6305 (2020) |
+| IHB100x10 | 100 | Ionic hydrogen bonds | J. Řezáč, J. Chem. Theory Comput. 16, 2355 (2020) |
+| R739x5 | 739 | Repulsive contacts | K. Kříž, M. Nováček, J. Řezáč, J. Chem. Theory Comput. 17, 1548 (2021) |
+| SH250x10 | 250 | Sigma hole | K. Kříž, J. Řezáč, Phys. Chem. Chem. Phys. 24, 14794 (2022) |
+
+The recipe and the metrics are those of the noncovalent-interactions benchmark of MLIPAudit (L. Wehrhan et
+al., arXiv:2511.20487), whose published results the benchmark reproduces up to the rounding of MLIPAudit's
+float32 energies ([validation.md](validation.md), section 10):
+
+1. **Single points** of every point of every curve: the complex in a 50 Å periodic box
+   (`structures.molecule_in_box`, at least 40 Å wider than the complex), its total charge in
+   `Atoms.info["charge"]` and spin multiplicity 1 in `Atoms.info["spin"]`, where charge-aware ASE calculators
+   read them (`TorchSimSimulator` passes them into the TorchSim state); no relaxation.
+2. **Interaction energy** of the MLIP and of the reference (kcal/mol, `properties/molecules.py`): the lowest
+   energy of the curve minus the energy at the largest separation; for the repulsive contacts of R739x5, the
+   highest energy instead of the lowest.
+
+`elements` lists the elements the model supports: complexes with other elements are skipped (status
+`skipped: ...`), as in MLIPAudit (478 of the 2,206 complexes for the ten elements of MACE-OFF23). `sets`
+selects data sets.
+
+Columns: `interaction_energy_ref`, per model `interaction_energy` and `status`, and `dataset`, `group`
+(MLIPAudit's names; the group HBCNO of D442x10 is split into HCNO and Boron, the complexes with boron) and
+`name`. Summary: MAE and RMSE (kcal/mol) over all complexes, per data set and per subset
+(`"<data set>: <group>"`), and the counts.
+
+## Conformers — `ConformerBenchmark` (`benchmarks/conformers.py`)
+
+Dataset: the conformer benchmark of D. L. Folmsbee and G. R. Hutchison, Int. J. Quantum Chem. 121, e26381 (2021)
+([hutchisonlab/conformer-benchmark](https://github.com/hutchisonlab/conformer-benchmark), MIT license; the
+repository at commit `0109c8e`, a 41 MB archive, MD5-checked, downloaded on first use): up to 10 conformers
+of each of 702 drug-like molecules (86 of them ions, charges −1 to +2; elements H, C, N, O, F, P, S, Cl,
+Br), optimized with B3LYP-D3BJ, with DLPNO-CCSD(T) single-point energies.
+
+The recipe and the metrics are those of MLIPAudit's conformer-selection benchmark (compared with its
+published results in [validation.md](validation.md), section 10):
+
+1. The 693 molecules with at least three conformers (`MIN_CONFORMERS`).
+2. **Single points** of their 6,745 conformers, each in a 50 Å periodic box with its charge in `Atoms.info`;
+   no relaxation.
+3. Per molecule, the energies relative to the conformer lowest in the reference (the zero of both the
+   reference and the prediction): their mean absolute and root-mean-square errors (kcal/mol) and the
+   Spearman rank correlation of the predicted with the reference energies (`properties/molecules.py`).
+
+`elements` skips molecules with other elements, as for Noncovalent.
+
+Columns: `energies_ref` and per model `energies` (the relative energies of the conformers in the order of
+the data, kcal/mol), `mae`, `rmse`, `spearman`, `status`, and `charge`, `n_conformers`. Summary: the means of
+`mae`, `rmse` and `spearman` over the molecules (MLIPAudit's `avg_mae`, `avg_rmse`) and the counts.

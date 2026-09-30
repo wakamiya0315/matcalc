@@ -24,6 +24,8 @@ from .helpers import FCC_PRIMITIVE, SOFTENING_FACTOR, phonon_entry, structure
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ase import Atoms
+
 
 @pytest.fixture
 def emt_simulator() -> ASESimulator:
@@ -259,4 +261,107 @@ def diatomics_dataset(tmp_path: Path) -> Path:
     path = tmp_path / "diatomics-dft.json.gz"
     with gzip.open(path, "wt") as f:
         json.dump({"PBE": curves, "r2SCAN": {}}, f)
+    return path
+
+
+def _emt_energies(structures: list) -> np.ndarray:
+    energies = []
+    for original in structures:
+        atoms = original.copy()
+        atoms.calc = EMT()
+        energies.append(atoms.get_potential_energy())
+    return np.array(energies)
+
+
+def _xyz(atoms: Atoms, comment: str) -> str:
+    rows = [f"{s} {x:.8f} {y:.8f} {z:.8f}" for s, (x, y, z) in zip(atoms.symbols, atoms.positions, strict=True)]
+    return "\n".join([str(len(atoms)), comment, *rows])
+
+
+@pytest.fixture
+def ncia_dataset(tmp_path: Path) -> Path:
+    """Packaged NCI Atlas sets in the published layout, with EMT curves of metal "complexes" as the reference.
+
+    D442x10 has a Cu2 curve (group HBCNO without boron, reported as HCNO) and a BCu curve (HBCNO with boron,
+    reported as Boron; EMT has no boron); IHB100x10 a charged Cu3 curve; R739x5 a repulsive Cu2 curve.
+    """
+    import zipfile
+
+    from matcalc.properties.molecules import KCAL_PER_MOL
+    from matcalc.structures import molecule_in_box
+
+    long_scalings = [0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.25, 1.5, 2.0]
+    curves = {
+        "D442x10": [
+            ("1.01.01", "HBCNO", ["Cu", "Cu"], 2.4, long_scalings, 0),
+            ("1.02.01", "HBCNO", ["B", "Cu"], 2.4, long_scalings, 0),
+        ],
+        "IHB100x10": [("01.001", "OHk-O", ["Cu", "Cu", "Cu"], 2.5, long_scalings, 1)],
+        "R739x5": [("001.01", "HCNO", ["Cu", "Cu"], 1.8, [1.0, 1.05, 1.1, 1.15, 1.25], 0)],
+    }
+    for set_name, set_curves in curves.items():
+        folder = f"NCIA_{set_name}"
+        with zipfile.ZipFile(tmp_path / f"NCIA_{set_name}_github_package.zip", "w") as archive:
+            names = ["# system names"]
+            for curve, group, symbols, contact, scalings, charge in set_curves:
+                # monomer A: the first atom; monomer B: the others, moved along x with the contact
+                others = range(len(symbols) - 1)
+                geometries = [
+                    molecule_in_box(symbols, [[0.0, 0.0, 0.0]] + [[contact * scaling, 2.4 * k, 0.0] for k in others])
+                    for scaling in scalings
+                ]
+                if "B" in symbols:
+                    energies = np.arange(len(scalings), dtype=float)
+                else:
+                    energies = _emt_energies(geometries) / KCAL_PER_MOL - 0.1  # any zero will do
+                for scaling, atoms, energy in zip(scalings, geometries, energies, strict=True):
+                    point = f"{curve}_{round(scaling * 100):03d}"
+                    names.append(f"{point}\t{symbols[0]} ... {''.join(symbols[1:])}")
+                    header = (
+                        f"charge={charge} charge_a={charge} charge_b=0 selection_a=1-1 selection_b=2-{len(symbols)} "
+                        f"scaling={scaling:.2f} benchmark_Eint={energy:.10f} benchmark_unit=kcal/mol group={group}"
+                    )
+                    archive.writestr(f"{folder}/geometries/{point}.xyz", _xyz(atoms, header))
+            archive.writestr(f"{folder}/{folder}_system_names.txt", "\n".join(names) + "\n")
+    return tmp_path
+
+
+@pytest.fixture
+def conformer_dataset(tmp_path: Path) -> Path:
+    """A zip archive in the layout of hutchisonlab/conformer-benchmark, with metal clusters as "molecules".
+
+    ``neutral`` (3 conformers of Cu3): the reference is EMT itself. ``cation`` (charge 1, 4 conformers of
+    Cu4): the reference relative energies are twice EMT's. ``pair`` (2 conformers): left out. ``gold`` (3
+    conformers of Au3): the reference is EMT.
+    """
+    import zipfile
+
+    from ase import units
+
+    from matcalc.structures import molecule_in_box
+
+    def chain(symbol: str, n: int, bond: float, stretch: float) -> list:
+        return molecule_in_box([symbol] * n, [[bond * k * (1 + stretch * k), 0.3 * k * k, 0.0] for k in range(n)])
+
+    molecules = {
+        "neutral": ("Neutral_jobs", [chain("Cu", 3, 2.4, s) for s in (0.0, 0.05, 0.1)], 1.0, 0),
+        "cation": ("CHG_jobs", [chain("Cu", 4, 2.5, s) for s in (0.08, 0.0, 0.03, 0.12)], 2.0, 1),
+        "pair": ("Neutral_jobs", [chain("Cu", 2, 2.4, s) for s in (0.0, 0.1)], 1.0, 0),
+        "gold": ("Neutral_jobs", [chain("Au", 3, 2.7, s) for s in (0.0, 0.05, 0.1)], 1.0, 0),
+    }
+    root = "conformer-benchmark-0123abc"
+    path = tmp_path / "conformer-benchmark.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(f"{root}/", "")
+        lines, charged = [], []
+        for name, (folder, conformers, factor, charge) in molecules.items():
+            relative = _emt_energies(conformers) / units.Hartree
+            energies = factor * (relative - relative[0]) - 1000.0  # Hartree
+            for k, (atoms, energy) in enumerate(zip(conformers, energies, strict=True)):
+                lines.append(f"{name} rmsd{k:03d}-opt.out.bz2 FINAL SINGLE POINT ENERGY     {energy:.12f}")
+                archive.writestr(f"{root}/geometries/{folder}/{name}/rmsd{k:03d}-opt.xyz", _xyz(atoms, "x.gzmat"))
+            if charge:
+                charged.append(f"{name} CHARGE={charge} ")
+        archive.writestr(f"{root}/energies/ccsdt.txt", "\n".join(lines) + "\n")
+        archive.writestr(f"{root}/geometries/CHG-charges.txt", "\n".join(charged) + "\n")
     return path

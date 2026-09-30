@@ -2,18 +2,20 @@
 
 This is a fork of [materialyzeai/matcalc](https://github.com/materialyzeai/matcalc) reduced to its
 four benchmarks for machine-learning interatomic potentials (MLIPs), plus three tasks of
-[Matbench Discovery](https://matbench-discovery.materialsproject.org) that need only relaxations and
-single points as well:
+[Matbench Discovery](https://matbench-discovery.materialsproject.org) and two molecular tasks of
+[MLIPAudit](https://github.com/instadeepai/mlipaudit) that need only relaxations and single points as well:
 
-| Benchmark | Compared with DFT (PBE) | Dataset |
+| Benchmark | Compared with the reference | Reference data |
 |---|---|---|
-| Equilibrium | formation energy `Eform` (eV/atom) and structural distance `d` after relaxation | 972 WBM compounds |
-| Elasticity | bulk and shear moduli `K_vrh`, `G_vrh` (GPa) | 3,953 binary compounds (Materials Project) |
-| Phonon | heat capacity `CV` at 300 K (J/(K·mol)) and dynamical stability | 1,170 binary compounds (Alexandria) |
-| Softening | slope of MLIP forces against DFT forces on high-energy configurations | 979 WBM materials, 9,308 frames |
-| Discovery | stability against the convex hull (F1, DAF, `e_above_hull` MAE) and relaxed geometry (RMSD, symmetry) | 256,963 WBM crystals (Matbench Discovery) |
-| Kappa | lattice thermal conductivity at 300 K (κ_SRME, κ_SRE) | 103 PhononDB crystals (Matbench Discovery) |
-| Diatomics | potential-energy curves of dimers X2 from 0.1 to 6 Å: energy and force errors, bond length, well depth, vibrational frequency, repulsive wall, smoothness | 87 elements H–U (Matbench Discovery) |
+| Equilibrium | formation energy `Eform` (eV/atom) and structural distance `d` after relaxation | 972 WBM compounds (PBE) |
+| Elasticity | bulk and shear moduli `K_vrh`, `G_vrh` (GPa) | 3,953 binary compounds (Materials Project, PBE) |
+| Phonon | heat capacity `CV` at 300 K (J/(K·mol)) and dynamical stability | 1,170 binary compounds (Alexandria, PBE) |
+| Softening | slope of MLIP forces against DFT forces on high-energy configurations | 979 WBM materials, 9,308 frames (PBE) |
+| Discovery | stability against the convex hull (F1, DAF, `e_above_hull` MAE) and relaxed geometry (RMSD, symmetry) | 256,963 WBM crystals (Matbench Discovery, PBE) |
+| Kappa | lattice thermal conductivity at 300 K (κ_SRME, κ_SRE) | 103 PhononDB crystals (Matbench Discovery, PBE) |
+| Diatomics | potential-energy curves of dimers X2 from 0.1 to 6 Å: energy and force errors, bond length, well depth, vibrational frequency, repulsive wall, smoothness | 87 elements H–U (Matbench Discovery, PBE) |
+| Noncovalent | interaction energies of molecular complexes from their dissociation curves (MAE, RMSE in kcal/mol) | 2,206 complexes of the NCI Atlas (CCSD(T)/CBS) |
+| Conformers | relative energies of the conformers of drug-like molecules (MAE, RMSE in kcal/mol, Spearman correlation) | 6,745 conformers of 693 molecules (Folmsbee and Hutchison, DLPNO-CCSD(T)) |
 
 The unmodified upstream code (materialyzeai/matcalc at `b04715d`, 2026-09-09) is kept on the branch
 [`upstream-main`](https://github.com/wakamiya0315/matcalc/tree/upstream-main). Equilibrium,
@@ -49,9 +51,15 @@ print(benchmark.summarize(table, "my-mlip"))
 ```
 
 The Equilibrium, Elasticity and Softening datasets are downloaded from Hugging Face on first use; the
-Phonon dataset is part of the package. `run` returns the result table; the checkpoint file keeps all
-finished rows (including structures), so an interrupted run resumes from it. `matcalc.run_benchmarks`
-runs several benchmarks for several models and writes the tables.
+Phonon and Kappa datasets are part of the package; Discovery and Diatomics download Matbench Discovery's
+Figshare files, Noncovalent and Conformers their files on GitHub (at fixed commits, MD5-checked). `run`
+returns the result table; the checkpoint file keeps all finished rows (including structures), so an
+interrupted run resumes from it. `matcalc.run_benchmarks` runs several benchmarks for several models and
+writes the tables.
+
+Evaluate the MLIP in float64 for Noncovalent and Conformers: in float32 the rounding of the large total
+energies of molecules is comparable to the energy differences these benchmarks measure
+([docs/validation.md](docs/validation.md), section 10).
 
 ## Batched GPU runs with TorchSim
 
@@ -88,9 +96,10 @@ table = matcalc.PhononBenchmark(workers=4).run(simulator, "my-mlip")
 
 Agreement with the ASE path and wall times are reported in [docs/validation.md](docs/validation.md).
 
-Each result table has one row per material: the id, the formula, the DFT values (`<quantity>_DFT`), the
-predictions (`<quantity>_<model>`), and `status_<model>`, which is `ok` or the reason a prediction is
-missing (for example a relaxation that did not converge). The column names are those of upstream matcalc.
+Each result table has one row per material: the id, the formula, the DFT values (`<quantity>_DFT`; the
+coupled-cluster values `<quantity>_ref` in the molecular benchmarks), the predictions
+(`<quantity>_<model>`), and `status_<model>`, which is `ok` or the reason a prediction is missing (for
+example a relaxation that did not converge). The column names are those of upstream matcalc.
 
 ## Tests
 
@@ -114,11 +123,12 @@ src/matcalc/
                 phonon calculations)
   properties/   the physics as plain functions: elastic fit, phonons, formation energy,
                 softening scale, structural fingerprints, stability and geometry metrics,
-                thermal conductivity, diatomic curves
+                thermal conductivity, diatomic curves, molecular interaction and conformer energies
   simulation/   simulators: what evaluates the MLIP. ASESimulator relaxes (FIRE + Frechet cell
                 filter) and computes single points with any ASE calculator, one structure at a time;
                 TorchSimSimulator does the same in batches on the GPU
   datasets.py   download and reproducible subsets
+  structures.py conversions between pymatgen and ASE; molecules in a periodic box
 scripts/        build_phonon_dataset.py: the Phonon dataset from Alexandria's phonopy files;
                 build_kappa_dataset.py: the Kappa dataset from PhononDB's phono3py force sets
 validation/     the runs behind docs/validation.md (with MACE as the test model)
@@ -133,6 +143,9 @@ Added: the Discovery, Kappa and Diatomics benchmarks, Matbench Discovery's disco
 optimization), κ_SRME and diatomics tasks written in the same form as the others (see
 [docs/benchmarks.md](docs/benchmarks.md)). Their data come from Matbench Discovery's Figshare (downloaded on
 first use) and, for the Kappa reference, from PhononDB's PBE force sets (packaged); all are CC BY 4.0.
+Also added: the Noncovalent and Conformers benchmarks, MLIPAudit's noncovalent-interaction and
+conformer-selection tasks, on the NCI Atlas dissociation curves (CC BY 4.0) and the conformers of Folmsbee
+and Hutchison (MIT), both downloaded from GitHub on first use.
 
 Removed: every calculator the benchmarks do not use (adsorption, EOS, grain boundaries, interfaces,
 LAMMPS, MD, NEB, order, phonon3, QHA, surfaces), `ChainedCalc`, the multi-provider model registry, the
@@ -183,4 +196,9 @@ for the softening benchmark, B. Deng et al., npj Comput. Mater. 11, 9 (2025); fo
 A. Loew et al., npj Comput. Mater. (2025), doi:10.1038/s41524-025-01650-1; for the discovery benchmark,
 J. Riebesell et al., Nat. Mach. Intell. 7, 836 (2025), doi:10.1038/s42256-025-01055-1, and H.-C. Wang,
 S. Botti, M. A. L. Marques, npj Comput. Mater. 7, 12 (2021); for the kappa benchmark, B. Póta et al.,
-arXiv:2408.00755, and A. Togo, L. Chaput, I. Tanaka, Phys. Rev. B 91, 094306 (2015).
+arXiv:2408.00755, and A. Togo, L. Chaput, I. Tanaka, Phys. Rev. B 91, 094306 (2015); for the noncovalent
+benchmark, the NCI Atlas papers of the sets used (J. Řezáč, J. Chem. Theory Comput. 16, 2355 and 6305
+(2020); K. Kříž, M. Nováček, J. Řezáč, J. Chem. Theory Comput. 17, 1548 (2021); J. Řezáč, Phys. Chem.
+Chem. Phys. 24, 14780 (2022); K. Kříž, J. Řezáč, Phys. Chem. Chem. Phys. 24, 14794 (2022)); for the
+conformer benchmark, D. L. Folmsbee, G. R. Hutchison, Int. J. Quantum Chem. 121, e26381 (2021); for both,
+MLIPAudit (L. Wehrhan et al., arXiv:2511.20487).

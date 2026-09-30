@@ -60,6 +60,11 @@ MAX_PROBE_ATOMS = 100_000
 model that needs little memory per atom (float32 with cuEquivariance) would otherwise be probed with
 batches of up to half a million atoms, which takes minutes."""
 
+SYSTEM_EXTRAS = {"total_charge": "charge", "total_spin": "spin", "charge": "charge", "spin": "spin"}
+"""TorchSim state fields read from ``Atoms.info``: the total charge and spin multiplicity of molecules (see
+``structures.molecule_in_box``), where ASE calculators read them. Both of TorchSim's names are filled, for
+models that read either; structures without these entries (crystals) get none."""
+
 OUT_OF_MEMORY_MESSAGES = ("out of memory", "Failed to allocate")
 """Parts of the messages of out-of-memory errors: PyTorch's, and those of kernels that allocate GPU memory
 themselves, such as cuEquivariance's ("cudaErrorMemoryAllocation:out of memory")."""
@@ -523,6 +528,7 @@ class TorchSimSimulator:
             [to_ase_atoms(structure) for structure in structures],
             device=self.model.device,
             dtype=self.model.dtype,
+            system_extras_map=SYSTEM_EXTRAS,
         )
 
     def _batched[T](self, state: Any, run: Callable[[float], T]) -> T:

@@ -1,13 +1,15 @@
-"""The MACE test model of the validation runs (not part of matcalc).
+"""The MACE test models of the validation runs (not part of matcalc).
 
 matcalc benchmarks whatever ASE calculator or TorchSim model the user passes. The validation runs of this
-fork use MACE-MatPES-PBE-0; this module builds it for both paths from the same checkpoint file, so the
-ASE and the TorchSim runs evaluate exactly the same potential. Needs mace-torch (and torch-sim).
+fork use MACE-MatPES-PBE-0 (MACE-MP-0 and MACE-OFF23 where published results of those models exist); this
+module builds them for both paths from the same checkpoint file, so the ASE and the TorchSim runs evaluate
+exactly the same potential. Needs mace-torch (and torch-sim).
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any, Literal
 
 import torch
@@ -16,7 +18,11 @@ logger = logging.getLogger(__name__)
 
 MODEL = "mace-matpes-pbe-0"
 """Default test model. ``"medium"`` is MACE-MP-0 (medium, trained on MPtrj): the model whose Matbench
-Discovery results are published, used to validate the Discovery benchmark."""
+Discovery results are published, used to validate the Discovery benchmark. ``"off-medium"`` is MACE-OFF23
+(medium; organic molecules), whose MLIPAudit results validate the molecular benchmarks."""
+
+MACE_OFF_ELEMENTS = ("H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I")
+"""The elements of MACE-OFF23."""
 
 
 def load_mace(
@@ -26,23 +32,34 @@ def load_mace(
 
     Args:
         backend: ``"ase"`` or ``"torchsim"``.
-        model: Name of the checkpoint for ``mace_mp`` (e.g. ``"mace-matpes-pbe-0"``, ``"medium"``).
+        model: Name of the checkpoint for ``mace_mp`` (e.g. ``"mace-matpes-pbe-0"``, ``"medium"``), or
+            ``"off-<size>"`` for MACE-OFF23 (``"off-small"``, ``"off-medium"``, ``"off-large"``).
         dtype: ``"float64"`` or ``"float32"``.
         device: ``"cuda"`` or ``"cpu"`` (default: CUDA when available).
 
     Returns:
         The calculator or the TorchSim model.
     """
-    from mace.calculators import mace_mp
-    from mace.calculators.foundations_models import download_mace_mp_checkpoint
+    from mace.calculators import mace_mp, mace_off
+    from mace.calculators.foundations_models import download_mace_mp_checkpoint, mace_off_urls
+    from mace.tools.utils import get_cache_dir
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    off_size = model.removeprefix("off-") if model.startswith("off-") else None
     if backend == "ase":
+        if off_size is not None:
+            return mace_off(model=off_size, device=device, default_dtype=dtype)
         return mace_mp(model=model, device=device, default_dtype=dtype)
     from torch_sim.models.mace import MaceModel
 
+    if off_size is not None:
+        checkpoint = Path(get_cache_dir()) / Path(mace_off_urls[off_size]).name
+        if not checkpoint.exists():
+            mace_off(model=off_size, device="cpu")  # downloads it into MACE's cache
+    else:
+        checkpoint = Path(download_mace_mp_checkpoint(model))
     return MaceModel(
-        model=download_mace_mp_checkpoint(model),
+        model=str(checkpoint),
         device=torch.device(device),
         dtype=getattr(torch, dtype),
         neighbor_list_fn=GrowingNeighborList() if device == "cuda" else None,

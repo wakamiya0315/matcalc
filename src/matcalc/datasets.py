@@ -28,6 +28,21 @@ FIGSHARE_DOWNLOAD_URL = "https://ndownloader.figshare.com/files/{file_id}"
 
 
 @dataclass(frozen=True)
+class RemoteFile:
+    """A published file, identified by its address and checked by its MD5 checksum.
+
+    Attributes:
+        url: Download address (https).
+        name: File name in the local cache.
+        md5: MD5 checksum of the published file.
+    """
+
+    url: str
+    name: str
+    md5: str
+
+
+@dataclass(frozen=True)
 class FigshareFile:
     """A file published on Figshare, identified by its file id and checked by its MD5 checksum.
 
@@ -41,9 +56,14 @@ class FigshareFile:
     name: str
     md5: str
 
+    @property
+    def url(self) -> str:
+        """Direct download address."""
+        return FIGSHARE_DOWNLOAD_URL.format(file_id=self.file_id)
 
-def download_figshare_file(file: FigshareFile, subdirectory: str = "figshare") -> Path:
-    """Download a Figshare file once into the cache (``BENCHMARK_DATA_DIR/<subdirectory>``).
+
+def download_file(file: RemoteFile | FigshareFile, subdirectory: str) -> Path:
+    """Download a published file once into the cache (``BENCHMARK_DATA_DIR/<subdirectory>``).
 
     Args:
         file: The file.
@@ -60,10 +80,9 @@ def download_figshare_file(file: FigshareFile, subdirectory: str = "figshare") -
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
     partial = path.with_name(f"~{path.name}")
-    url = FIGSHARE_DOWNLOAD_URL.format(file_id=file.file_id)
-    logger.info("Downloading %s from %s", file.name, url)
-    request = urllib.request.Request(url, headers={"User-Agent": "matcalc"})  # noqa: S310 - fixed https address
-    digest = hashlib.md5()  # noqa: S324 - checksum published by Figshare, not a security measure
+    logger.info("Downloading %s from %s", file.name, file.url)
+    request = urllib.request.Request(file.url, headers={"User-Agent": "matcalc"})  # noqa: S310 - fixed https address
+    digest = hashlib.md5()  # noqa: S324 - checksum of the published file, not a security measure
     with urllib.request.urlopen(request) as response, partial.open("wb") as out:  # noqa: S310
         while chunk := response.read(1 << 20):
             digest.update(chunk)
@@ -73,6 +92,19 @@ def download_figshare_file(file: FigshareFile, subdirectory: str = "figshare") -
         raise OSError(f"{file.name}: MD5 {digest.hexdigest()} differs from the published {file.md5}; try again")
     partial.replace(path)
     return path
+
+
+def download_figshare_file(file: FigshareFile, subdirectory: str = "figshare") -> Path:
+    """``download_file`` for a Figshare file (kept for the benchmarks that use it).
+
+    Args:
+        file: The file.
+        subdirectory: Folder of the cache that holds the file.
+
+    Returns:
+        Path of the cached file.
+    """
+    return download_file(file, subdirectory)
 
 
 def list_benchmark_files() -> list[str]:
