@@ -544,8 +544,8 @@ kcal/mol with the same status for every reaction.
 
 Time: 20 s for the single points with TorchSim, 45 s with ASE, plus 12 s to load the model (0.4 s for the
 data). Each of the 2,442 molecules is evaluated once, where the 1,505 reactions name 4,161 (45,080 atoms
-instead of 32,016). TorchSim's time is mostly fixed costs: on another GPU of the queue (an RTX A6000, where the
-call takes 13 s), the batches take 2.6 s, the model's first forward pass 4 s and the memory probe of the
-smallest and the largest molecule 6 s, which a simulator keeps for its later calls. Lone atoms in a 50 Å box are
-not cheap for the batched model: about 6,000 of them fit in the 48 GB of that GPU, which is where the probe of
-the smallest molecule stops (so a limit on the probe's size would not shorten it).
+instead of 32,016). TorchSim's 20 s are mostly fixed costs, as timed separately on a slice of the same queue: the
+batches take 2.6 s, the model's first forward pass about 4 s and the memory probes about 10 s (7 s for a lone
+atom, 3 s for the largest molecule, of 72 atoms), which a simulator keeps for its later calls. For MACE-OFF23
+lone atoms in a 50 Å box are not cheap: about 6,000 fit on the slice, and the probe of the smallest molecule
+stops there on running out of memory, so limiting the size of the probe (tried) does not shorten it.

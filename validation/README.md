@@ -53,3 +53,12 @@ python mlipaudit_check.py conformers conformers.csv conformer_selection.json
 PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim reactions --model off-medium --dtype float32 --out reactions.csv
 python mlipaudit_check.py reactions reactions.csv reactivity.json
 ```
+
+GMTKN55: the benchmark given the PBEh-3c energies that the repository ships, against its published PBEh-3c
+results, then MACE-OFF23 on the reactions of its elements (and of neutral closed-shell molecules only):
+
+```bash
+PYTHONPATH=/path/to/main/src python gmtkn55_check.py
+PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim gmtkn55 --model off-medium --out gmtkn55.csv
+PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim gmtkn55 --model off-medium --neutral-closed-shell --out gmtkn55_neutral.csv
+```
