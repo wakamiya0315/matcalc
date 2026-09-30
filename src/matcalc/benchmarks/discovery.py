@@ -21,6 +21,9 @@ Recipe:
    follow Matbench Discovery's conventions (see ``summarize``).
 4. Geometry: RMSD between the MLIP-relaxed and the DFT-relaxed structure (pymatgen StructureMatcher) and
    their space groups (moyopy; the DFT ones are those published with the data) at two tolerances.
+
+A run can be split into shards that run as separate jobs (``shard=(k, n)``: every n-th crystal of the draw
+from the k-th on); ``DiscoveryBenchmark.merge_shards`` joins their tables into the table of the whole run.
 """
 
 from __future__ import annotations
@@ -105,6 +108,7 @@ class DiscoveryBenchmark(Benchmark):
     Attributes:
         fmax: Force threshold of the relaxations (eV/Å).
         max_steps: Maximum number of FIRE steps per relaxation.
+        shard: ``(k, n)`` when the run is the k-th of n shards, else ``None``.
         reference_energies: Materials Project elemental reference energies (eV/atom).
     """
 
@@ -123,6 +127,7 @@ class DiscoveryBenchmark(Benchmark):
         seed: int = 42,
         fmax: float = 0.05,
         max_steps: int = 500,
+        shard: tuple[int, int] | None = None,
         workers: int = 1,
     ) -> None:
         """
@@ -133,23 +138,33 @@ class DiscoveryBenchmark(Benchmark):
             seed: Seed of the random draw.
             fmax: Force threshold of the relaxations (eV/Å).
             max_steps: Maximum number of FIRE steps per relaxation.
+            shard: ``(k, n)``: run only the k-th of n shards of the draw (k = 0, ..., n - 1), every n-th
+                crystal from the k-th on, for example as one of n jobs; ``None`` runs the whole draw.
             workers: Processes for the geometry comparison (see ``Benchmark``).
+
+        Raises:
+            ValueError: If ``shard`` is not ``(k, n)`` with 0 <= k < n.
         """
+        if shard is not None and not (len(shard) == 2 and 0 <= shard[0] < shard[1]):  # noqa: PLR2004 - (k, n)
+            raise ValueError(f"shard must be (k, n) with 0 <= k < n, not {shard!r}")
         self.fmax = fmax
         self.max_steps = max_steps
+        self.shard = None if shard is None else (int(shard[0]), int(shard[1]))
         self.reference_energies: dict[str, float] = {}
         super().__init__(dataset, n_samples=n_samples, seed=seed, workers=workers)
 
     def run_settings(self) -> dict[str, str]:
-        """The relaxation settings that differ from the defaults.
+        """The relaxation settings that differ from the defaults, and the shard.
 
         Returns:
-            Setting name → value, kept in the checkpoint so that a run is not resumed with other settings.
+            Setting name → value, kept in the checkpoint so that a run is not resumed with other settings
+            (or as another shard).
         """
-        return self._changed_settings("fmax", "max_steps")
+        shard = {} if self.shard is None else {"shard": f"{self.shard[0]}/{self.shard[1]}"}
+        return self._changed_settings("fmax", "max_steps") | shard
 
     def load_materials(self) -> list[Material]:
-        """Read the WBM data; only the structures of the crystals drawn are parsed.
+        """Read the WBM data; only the structures of the crystals drawn (of the shard) are parsed.
 
         Returns:
             The crystals of this run, in the order they were drawn.
@@ -165,6 +180,8 @@ class DiscoveryBenchmark(Benchmark):
                 element: entry["energy"] / sum(entry["composition"].values()) for element, entry in json.load(f).items()
             }
         chosen = sample_subset(list(summary.index), self.n_samples, self.seed)  # same draw as the other benchmarks
+        if self.shard is not None:
+            chosen = chosen[self.shard[0] :: self.shard[1]]
         wanted = set(chosen)
         initial = {
             material_id: _atoms(entry["initial_structure"])
@@ -239,7 +256,20 @@ class DiscoveryBenchmark(Benchmark):
         return predictions
 
     def summarize(self, table: pd.DataFrame, model_name: str) -> dict[str, Any]:
-        """Matbench Discovery's metrics for one model.
+        """Matbench Discovery's metrics for one model (``metrics``) and the wall time per stage.
+
+        Args:
+            table: Result of ``run`` (or of ``merge_shards``).
+            model_name: The label used in ``run``.
+
+        Returns:
+            The entries of ``metrics`` and ``timings_s``, the wall time per stage of this benchmark's runs (s).
+        """
+        return self.metrics(table, model_name) | {"timings_s": dict(self.timings)}
+
+    @staticmethod
+    def metrics(table: pd.DataFrame, model_name: str) -> dict[str, Any]:
+        """Matbench Discovery's metrics for one model, from a result table alone (no data are loaded).
 
         Discovery metrics, for all crystals and for the unique prototypes (crystals whose prototype is
         not in the Materials Project), use the leaderboard conventions: predictions more than
@@ -248,12 +278,12 @@ class DiscoveryBenchmark(Benchmark):
         crystals before rounding. Geometry metrics cover every relaxed structure at both tolerances.
 
         Args:
-            table: Result of ``run``.
+            table: Result of ``run`` (or of ``merge_shards``).
             model_name: The label used in ``run``.
 
         Returns:
-            Counts, ``discovery`` (``full_test_set``, ``unique_prototypes``), ``geo_opt`` (one entry per
-            tolerance) and the wall time per stage (s).
+            Counts, ``discovery`` (``full_test_set``, ``unique_prototypes``) and ``geo_opt`` (one entry per
+            tolerance).
         """
         status = table[f"status_{model_name}"].astype(str)
         e_form_dft = pd.to_numeric(table["e_form_per_atom_DFT"], errors="coerce")
@@ -282,13 +312,33 @@ class DiscoveryBenchmark(Benchmark):
             )
             for symprec in SYMPRECS
         }
-        return {
-            "n_materials": len(table),
-            "n_ok": int(relaxed.sum()),
-            "discovery": discovery,
-            "geo_opt": geo_opt,
-            "timings_s": dict(self.timings),
-        }
+        return {"n_materials": len(table), "n_ok": int(relaxed.sum()), "discovery": discovery, "geo_opt": geo_opt}
+
+    @staticmethod
+    def merge_shards(tables: Sequence[pd.DataFrame]) -> pd.DataFrame:
+        """The table of a whole run from the tables of its shards, for ``metrics`` or ``summarize``.
+
+        Args:
+            tables: The tables of the finished runs with ``shard=(0, n)``, ``(1, n)``, ..., ``(n - 1, n)``, in
+                this order (``run``'s tables, or read back from CSV files).
+
+        Returns:
+            One table, with its rows in the order of the unsplit run.
+
+        Raises:
+            ValueError: If the shards cannot all be finished shards of one run, in this order, or a crystal
+                appears in more than one.
+        """
+        sizes = [len(table) for table in tables]
+        if not sizes or sizes != sorted(sizes, reverse=True) or sizes[0] - sizes[-1] > 1:
+            raise ValueError(f"shards with {sizes} rows are not the finished shards of one run in shard order")
+        n = len(tables)
+        # row i of shard k is crystal k + i n of the draw
+        order = np.argsort([k + i * n for k, size in enumerate(sizes) for i in range(size)])
+        merged = pd.concat(tables, ignore_index=True).iloc[order].reset_index(drop=True)
+        if merged["material_id"].duplicated().any():
+            raise ValueError("a crystal appears in more than one shard")
+        return merged
 
     def _row(self, material: Material, prediction: dict[str, Any], model_name: str) -> dict[str, Any]:
         row = super()._row(material, prediction, model_name)

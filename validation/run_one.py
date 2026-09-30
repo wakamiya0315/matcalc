@@ -23,6 +23,7 @@ def main() -> None:
     parser.add_argument("--dtype", default="float64", choices=["float64", "float32"])
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--max-steps", type=int, default=None, help="phonon: maximum FIRE steps")
+    parser.add_argument("--shard", default=None, help="discovery: k/n, run only the k-th of n shards (k = 0..n-1)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -64,6 +65,8 @@ def main() -> None:
         simulator = (TorchSimSimulator(model, show_progress=False) if backend == "torchsim"
                      else matcalc.ASESimulator(model, show_progress=False))
         options = {} if args.max_steps is None else {"max_steps": args.max_steps}
+        if args.shard is not None:
+            options["shard"] = tuple(int(x) for x in args.shard.split("/"))
         if args.benchmark in ("noncovalent", "conformers", "reactions") and args.model.startswith("off-"):
             from mace_models import MACE_OFF_ELEMENTS
 
@@ -84,6 +87,7 @@ def main() -> None:
             table[column] = [json.dumps(v) if isinstance(v, list) else v for v in table[column]]
     table.to_csv(args.out, index=False)
     info = {"code": args.code, "model": args.model, "dtype": args.dtype, "workers": args.workers, "max_steps": args.max_steps,
+            "shard": args.shard,
             "benchmark": args.benchmark, "n": len(table), "setup_s": round(loaded - start, 1),
             "run_s": round(end - loaded, 1), "gpu": torch.cuda.get_device_name(0),
             "peak_gpu_mem_GiB": round(torch.cuda.max_memory_allocated() / 2**30, 2), **extra}

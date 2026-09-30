@@ -172,6 +172,23 @@ the unique prototypes divided by their unrounded fraction of stable crystals); a
 RMSD, the MAE of the number of symmetry operations and the fractions of structures whose symmetry
 decreased, matched or increased.
 
+**Shards.** The whole set takes 3.4 h on one H100 MIG slice ([validation.md](validation.md), section 7). It
+can run as n separate jobs instead: `DiscoveryBenchmark(shard=(k, n))` takes every n-th crystal of the draw
+from the k-th on (k = 0, ..., n − 1; the draw of `n_samples` and `seed` is the same for all shards, and only
+the shard's crystals are read). The shard is kept in the checkpoint, so that a checkpoint is not resumed as
+another shard. `DiscoveryBenchmark.merge_shards` joins the tables of the n finished shards, given in shard
+order, into the table of the whole run, and `DiscoveryBenchmark.metrics` computes the summary from that table
+alone:
+
+```python
+tables = [DiscoveryBenchmark(shard=(k, 4)).run(model, "my-mlip") for k in range(4)]  # one k per job
+table = DiscoveryBenchmark.merge_shards(tables)
+metrics = DiscoveryBenchmark.metrics(table, "my-mlip")
+```
+
+`validation/tsubame_discovery_shards.sh` runs the four shards as a TSUBAME job array (one `gpu_h` slice each)
+and `validation/merge_shards.py` joins their tables.
+
 ## Kappa — `KappaBenchmark` (`benchmarks/kappa.py`)
 
 Dataset: `data/phonondb-pbe-kappa.json.gz` (packaged; built by `scripts/build_kappa_dataset.py`, CC BY 4.0):

@@ -52,7 +52,8 @@ benchmark with MACE.
   primitive matrices, displacements, C_V and stability of the DFT calculations);
   `benchmarks/data/phonondb-pbe-kappa.json.gz` the Kappa dataset (PhononDB cells and the PBE conductivity
   recomputed with the phono3py the benchmark uses). Discovery reads Matbench Discovery's Figshare files
-  (`datasets.download_figshare_file`, MD5-checked) and keeps its 257,000 structures as ASE `Atoms`.
+  (`datasets.download_figshare_file`, MD5-checked) and keeps its 257,000 structures as ASE `Atoms`; it can
+  run in shards (`shard=(k, n)`, one job each) whose tables `DiscoveryBenchmark.merge_shards` joins.
   Noncovalent and Conformers read files pinned to a commit on GitHub, Reactions a Zenodo file of RDB7
   (`datasets.download_file`, MD5-checked); their molecules sit in a 50 Å periodic box (`structures.molecule_in_box`) with the total
   charge and spin multiplicity in `Atoms.info`, which `TorchSimSimulator` passes into the TorchSim state.

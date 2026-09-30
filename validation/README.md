@@ -18,6 +18,7 @@ Discovery, Kappa and Diatomics benchmarks, whose predictions Matbench Discovery 
 | `v17_phonon_symmetry.py` | V17 | The Phonon benchmark on a subset in three settings (as before 2026-09-28, the default that subtracts the residual forces, `use_symmetry=False`) for one MLIP, loaded by a `module:function` given on the command line, and the comparison of the three tables. |
 | `diatomics_curves.py` | section 9 | Diatomic curves of a MACE model (ASE or TorchSim) in Matbench Discovery's prediction format, compared point by point with its published curves. |
 | `mlipaudit_check.py` | sections 10–11 | Noncovalent, Conformers and Reactions runs against MLIPAudit's published results for the same model, complex by complex, molecule by molecule and reaction by reaction, and MLIPAudit's summary against `summarize` on the run. |
+| `tsubame_discovery_shards.sh`, `merge_shards.py` | — | The whole Discovery benchmark as a TSUBAME job array of four shards (one `gpu_h` slice each), and the join of their tables with the metrics of the whole run. |
 | `matbench_discovery_check.py` | sections 7–8 | Discovery and Kappa runs against Matbench Discovery's published predictions, crystal by crystal; the leaderboard's κ metrics recomputed with matcalc's functions; the packaged κ reference against the published one; MP2020 corrections recomputed with the installed pymatgen. |
 
 Example (a V4-sized subset):
