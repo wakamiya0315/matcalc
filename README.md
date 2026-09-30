@@ -63,6 +63,10 @@ Evaluate the MLIP in float64 for the molecular benchmarks: in float32 the roundi
 energies of molecules is comparable to the energy differences these benchmarks measure
 ([docs/validation.md](docs/validation.md), section 10).
 
+The Discovery benchmark (3.4 h on one H100 MIG slice with TorchSim) can be split into shards that run as
+separate jobs, `DiscoveryBenchmark(shard=(k, n))`, and joined with `DiscoveryBenchmark.merge_shards` (see
+[docs/benchmarks.md](docs/benchmarks.md)).
+
 ## Batched GPU runs with TorchSim
 
 `ASESimulator` evaluates one small cell per GPU call, which leaves a GPU mostly idle. `TorchSimSimulator`

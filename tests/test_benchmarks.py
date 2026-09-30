@@ -426,3 +426,22 @@ def test_reactions(rdb7_dataset: Path, emt_simulator: ASESimulator) -> None:
     assert set(summary["reaction_energy"]) == {"MAE", "RMSE", "ME", "n"}
     assert ReactionBenchmark(rdb7_dataset).run_settings() == {}
     assert ReactionBenchmark(rdb7_dataset, elements=["Cu"]).run_settings() == {"elements": "Cu"}
+
+
+def test_discovery_shards_split_the_draw_and_merge_back(discovery_dataset: Path) -> None:
+    import pandas as pd
+
+    from matcalc import DiscoveryBenchmark
+
+    whole = [m.material_id for m in DiscoveryBenchmark(discovery_dataset).materials]
+    shards = [DiscoveryBenchmark(discovery_dataset, shard=(k, 3)) for k in range(3)]
+    assert [[m.material_id for m in shard.materials] for shard in shards] == [whole[k::3] for k in range(3)]
+    assert shards[1].run_settings() == {"shard": "1/3"}
+    tables = [pd.DataFrame({"material_id": [m.material_id for m in shard.materials]}) for shard in shards]
+    assert DiscoveryBenchmark.merge_shards(tables)["material_id"].tolist() == whole
+    with pytest.raises(ValueError, match="shard order"):
+        DiscoveryBenchmark.merge_shards(tables[::-1])
+    with pytest.raises(ValueError, match="more than one shard"):
+        DiscoveryBenchmark.merge_shards([tables[0], tables[0]])
+    with pytest.raises(ValueError, match="0 <= k < n"):
+        DiscoveryBenchmark(discovery_dataset, shard=(3, 3))
