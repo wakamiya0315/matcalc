@@ -315,3 +315,81 @@ def test_diatomics_curve_with_non_finite_scored_points_gets_no_metrics(diatomics
     assert benchmark._metrics(material, energies, forces)["status"] == "ok"
     energies[90] = np.nan  # 2.3 Å, inside it
     assert benchmark._metrics(material, energies, forces)["status"].startswith("non-finite")
+
+
+MOLECULAR_EMT_ELEMENTS = {"H", "C", "N", "O", "Al", "Ni", "Cu", "Pd", "Ag", "Pt", "Au"}
+"""The elements of ASE's EMT."""
+
+
+def test_noncovalent(ncia_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from matcalc import NoncovalentBenchmark
+
+    benchmark = NoncovalentBenchmark(
+        ncia_dataset, sets=["D442x10", "IHB100x10", "R739x5"], elements=MOLECULAR_EMT_ELEMENTS
+    )
+    assert [m.material_id for m in benchmark.materials] == [
+        "D442x10:1.01.01",
+        "D442x10:1.02.01",
+        "IHB100x10:01.001",
+        "R739x5:001.01",
+    ]
+    ion = benchmark.materials[2]
+    assert ion.structure.info["charge"] == 1
+    assert all(point.info["charge"] == 1 for point in ion.settings["points"])
+    table = benchmark.run(emt_simulator, "emt").set_index("system_id")
+    assert table["status_emt"].tolist() == ["ok", "skipped: B not in the elements", "ok", "ok"]
+    assert table["dataset"].tolist() == ["Dispersion", "Dispersion", "Ionic hydrogen bonds", "Repulsive contacts"]
+    assert table["group"].tolist() == ["HCNO", "Boron", "OH(+)-O", "HCNO"]
+    # EMT against its own curves; the repulsive contact is the highest point of its curve, not the lowest.
+    ok = table["status_emt"] == "ok"
+    assert table.loc[ok, "interaction_energy_emt"].tolist() == pytest.approx(
+        table.loc[ok, "interaction_energy_ref"].tolist(), abs=1e-6
+    )
+    reference = table["interaction_energy_ref"]
+    assert reference["R739x5:001.01"] > 0 > reference["D442x10:1.01.01"]
+    summary = benchmark.summarize(table.reset_index(), "emt")
+    assert (summary["n_systems"], summary["n_ok"], summary["n_skipped"]) == (4, 3, 1)
+    assert summary["interaction_energy"]["MAE"] == pytest.approx(0.0, abs=1e-6)
+    assert summary["interaction_energy"]["n"] == 3
+    assert set(summary["datasets"]) == {"Dispersion", "Ionic hydrogen bonds", "Repulsive contacts"}
+    assert set(summary["subsets"]) == {"Dispersion: HCNO", "Ionic hydrogen bonds: OH(+)-O", "Repulsive contacts: HCNO"}
+
+
+def test_conformers(conformer_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from matcalc import ConformerBenchmark
+
+    benchmark = ConformerBenchmark(conformer_dataset, elements={"Cu"})
+    assert [m.material_id for m in benchmark.materials] == ["neutral", "cation", "gold"]  # "pair" has 2 conformers
+    table = benchmark.run(emt_simulator, "emt").set_index("molecule")
+    assert table["status_emt"].tolist() == ["ok", "ok", "skipped: Au not in the elements"]
+    assert table["charge"].tolist() == [0, 1, 0]
+    assert table["n_conformers"].tolist() == [3, 4, 3]
+    neutral, cation = table.loc["neutral"], table.loc["cation"]
+    assert neutral["mae_emt"] == pytest.approx(0.0, abs=1e-6)
+    assert neutral["spearman_emt"] == pytest.approx(1.0)
+    # The reference relative energies of the cation are twice EMT's: the errors are EMT's relative energies,
+    # counted from the conformer lowest in the reference.
+    reference = np.array(cation["energies_ref"])
+    predicted = np.array(cation["energies_emt"])
+    assert reference.min() == 0.0
+    assert predicted[int(np.argmin(reference))] == 0.0
+    assert predicted == pytest.approx(reference / 2, abs=1e-6)
+    assert cation["mae_emt"] == pytest.approx(np.abs(predicted).mean(), abs=1e-6)
+    assert cation["spearman_emt"] == pytest.approx(1.0)
+    summary = benchmark.summarize(table.reset_index(), "emt")
+    assert (summary["n_molecules"], summary["n_ok"], summary["n_skipped"]) == (3, 2, 1)
+    assert summary["mae"] == pytest.approx((neutral["mae_emt"] + cation["mae_emt"]) / 2)
+
+
+def test_molecular_settings_are_kept_in_the_checkpoint(ncia_dataset: Path, conformer_dataset: Path) -> None:
+    from matcalc import ConformerBenchmark, NoncovalentBenchmark
+
+    assert NoncovalentBenchmark(ncia_dataset, sets=["R739x5"], elements=["O", "H"]).run_settings() == {
+        "sets": "R739x5",
+        "elements": "H,O",
+    }
+    assert NoncovalentBenchmark(ncia_dataset, sets="R739x5").sets == ("R739x5",)
+    with pytest.raises(ValueError, match="Unknown NCI Atlas data sets"):
+        NoncovalentBenchmark(ncia_dataset, sets=["S66x8"])
+    assert ConformerBenchmark(conformer_dataset).run_settings() == {}
+    assert ConformerBenchmark(conformer_dataset, elements=["Cu"]).run_settings() == {"elements": "Cu"}

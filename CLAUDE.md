@@ -5,7 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this fork is
 
 A fork of materialyzeai/matcalc reduced to the four benchmarks (Equilibrium, Elasticity, Phonon,
-Softening), plus three Matbench Discovery tasks (Discovery: WBM stability and geometry; Kappa: κ_SRME; Diatomics: dimer curves). `main` is this fork (the refactoring and the TorchSim simulator); changes reach it through
+Softening), plus three Matbench Discovery tasks (Discovery: WBM stability and geometry; Kappa: κ_SRME; Diatomics: dimer curves)
+and two molecular tasks as MLIPAudit computes them (Noncovalent: NCI Atlas interaction energies; Conformers:
+Folmsbee–Hutchison conformer energies). `main` is this fork (the refactoring and the TorchSim simulator); changes reach it through
 pull requests from feature branches, and CI (`.github/workflows/`) runs ruff, mypy and the CPU tests on
 them. `upstream-main` mirrors upstream's `main` and is never committed to (update it with
 `git fetch upstream && git push origin upstream/main:upstream-main`). Equilibrium, Elasticity and Softening
@@ -14,8 +16,9 @@ must give the same numbers as upstream unless a change is listed under "Changed 
 not upstream.
 
 The library contains only the benchmarks and the generic simulators. It does not load or depend on any
-MLIP: the user passes an ASE calculator or a TorchSim model. MACE (MACE-MatPES-PBE-0) is only the test
-model of the validation runs (`validation/mace_models.py`). Speed-ups belong on the benchmark side and
+MLIP: the user passes an ASE calculator or a TorchSim model. MACE (MACE-MatPES-PBE-0; MACE-MP-0 and
+MACE-OFF23 where their published results validate a benchmark) is only the test model of the validation
+runs (`validation/mace_models.py`). Speed-ups belong on the benchmark side and
 must help any MLIP (no model-specific kernels or precision tricks).
 
 ## Common commands
@@ -40,15 +43,19 @@ benchmark with MACE.
 
 - `benchmarks/_common.py` — `Benchmark` base class: dataset loading (Hugging Face name or local `Path`)
   and seeded subsampling, chunked `run()` with a JSON checkpoint (resume skips finished material ids), the
-  result table (`<quantity>_DFT`, `<quantity>_<model>`, `status_<model>`), `summarize()` and per-stage
-  timings (`with self.stage(name):`). `Material.settings` carries DFT settings a benchmark reuses.
-- `benchmarks/{equilibrium,elasticity,phonon,softening,discovery,kappa,diatomics}.py` — one benchmark each. `read_entries()` parses
+  result table (`<quantity>_DFT`, or `<quantity>_ref` with `reference_label = "ref"` for the coupled-cluster
+  references of the molecular benchmarks; `<quantity>_<model>`, `status_<model>`), `summarize()` and
+  per-stage timings (`with self.stage(name):`). `Material.settings` carries DFT settings a benchmark reuses.
+- `benchmarks/{equilibrium,elasticity,phonon,softening,discovery,kappa,diatomics,noncovalent,conformers}.py` — one benchmark each. `read_entries()` parses
   the dataset; `evaluate(materials, simulator)` is the recipe: stages over all materials of a chunk.
   `benchmarks/data/alexandria-pbe-phonon.json.gz` is the Phonon dataset (unit cells, supercell and
   primitive matrices, displacements, C_V and stability of the DFT calculations);
   `benchmarks/data/phonondb-pbe-kappa.json.gz` the Kappa dataset (PhononDB cells and the PBE conductivity
   recomputed with the phono3py the benchmark uses). Discovery reads Matbench Discovery's Figshare files
   (`datasets.download_figshare_file`, MD5-checked) and keeps its 257,000 structures as ASE `Atoms`.
+  Noncovalent and Conformers read files pinned to a commit on GitHub (`datasets.download_file`,
+  MD5-checked); their molecules sit in a 50 Å periodic box (`structures.molecule_in_box`) with the total
+  charge and spin multiplicity in `Atoms.info`, which `TorchSimSimulator` passes into the TorchSim state.
 - `properties/` — physics as pure functions with no model code (elastic fit, phonopy, formation energy,
   softening scale, fingerprints). Keep them independent of the simulator.
 - `simulation/` — the simulator interface (`relax`, `single_point`, result dataclasses in `base.py`) and
@@ -66,7 +73,8 @@ benchmark with MACE.
   processes (`pool_map`), overlapping with the GPU: single points are computed in parts
   (`split_into_parts`) and the CPU work of one part runs while the GPU computes the next. Scripts that use
   `workers > 1` need an `if __name__ == "__main__":` guard.
-- `datasets.py` (Hugging Face and Figshare downloads, `sample_subset`); `scripts/build_phonon_dataset.py`,
+- `datasets.py` (Hugging Face, Figshare and GitHub downloads, `sample_subset`); `structures.py`
+  (pymatgen/ASE conversions, `molecule_in_box`); `scripts/build_phonon_dataset.py`,
   `scripts/build_kappa_dataset.py`.
 
 ## Conventions

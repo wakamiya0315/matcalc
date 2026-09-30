@@ -1,4 +1,4 @@
-"""MatCalc benchmarks: compare a machine-learning interatomic potential (MLIP) with DFT.
+"""MatCalc benchmarks: compare a machine-learning interatomic potential (MLIP) with DFT and coupled-cluster data.
 
 The benchmarks (see ``docs/benchmarks.md``):
 
@@ -9,7 +9,9 @@ The benchmarks (see ``docs/benchmarks.md``):
 - ``DiscoveryBenchmark``: stability of hypothetical crystals and their relaxed geometry (WBM, Matbench
   Discovery);
 - ``KappaBenchmark``: lattice thermal conductivity at 300 K (PhononDB, Matbench Discovery's κ_SRME);
-- ``DiatomicsBenchmark``: potential-energy curves of homonuclear dimers (PBE, Matbench Discovery).
+- ``DiatomicsBenchmark``: potential-energy curves of homonuclear dimers (PBE, Matbench Discovery);
+- ``NoncovalentBenchmark``: interaction energies of noncovalent complexes (NCI Atlas, CCSD(T)/CBS);
+- ``ConformerBenchmark``: relative energies of conformers of drug-like molecules (DLPNO-CCSD(T)).
 
 Each benchmark asks a *simulator* for relaxations and single points: ``ASESimulator`` works with any
 ASE calculator, ``matcalc.simulation.TorchSimSimulator`` with any TorchSim model. The MLIP itself is
@@ -29,11 +31,13 @@ from importlib.metadata import PackageNotFoundError, version
 from .benchmarks import (
     BENCHMARKS,
     Benchmark,
+    ConformerBenchmark,
     DiatomicsBenchmark,
     DiscoveryBenchmark,
     ElasticityBenchmark,
     EquilibriumBenchmark,
     KappaBenchmark,
+    NoncovalentBenchmark,
     PhononBenchmark,
     SofteningBenchmark,
     run_benchmarks,
@@ -53,11 +57,13 @@ __all__ = [
     "BENCHMARKS",
     "ASESimulator",
     "Benchmark",
+    "ConformerBenchmark",
     "DiatomicsBenchmark",
     "DiscoveryBenchmark",
     "ElasticityBenchmark",
     "EquilibriumBenchmark",
     "KappaBenchmark",
+    "NoncovalentBenchmark",
     "PhononBenchmark",
     "RelaxResult",
     "Simulator",

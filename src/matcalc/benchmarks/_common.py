@@ -83,7 +83,9 @@ class Benchmark:
     default_dataset: ClassVar[str | Path]
     """Dataset used when none is given: a file name on Hugging Face or a local ``Path``."""
     reference_columns: ClassVar[tuple[str, ...]] = ()
-    """DFT quantities copied into the table as ``<quantity>_DFT`` columns."""
+    """Reference quantities copied into the table as ``<quantity>_<reference_label>`` columns."""
+    reference_label: ClassVar[str] = "DFT"
+    """Suffix of the reference columns (``"ref"`` for the coupled-cluster references of the molecular benchmarks)."""
     summary_metrics: ClassVar[dict[str, str]] = {}
     """Quantities summarized by ``summarize``: ``"error"`` (absolute error vs DFT) or ``"value"``."""
     default_chunk_size: ClassVar[int] = 100
@@ -243,7 +245,8 @@ class Benchmark:
         for quantity, kind in self.summary_metrics.items():
             predicted = pd.to_numeric(table[f"{quantity}_{model_name}"], errors="coerce")
             if kind == "error":
-                values = (predicted - pd.to_numeric(table[f"{quantity}_DFT"], errors="coerce")).abs().dropna()
+                reference = pd.to_numeric(table[f"{quantity}_{self.reference_label}"], errors="coerce")
+                values = (predicted - reference).abs().dropna()
                 summary[quantity] = {"MAE": float(values.mean()), "STDAE": float(values.std(ddof=0)), "n": len(values)}
             else:
                 values = predicted.dropna()
@@ -282,7 +285,8 @@ class Benchmark:
 
     def _row(self, material: Material, prediction: dict[str, Any], model_name: str) -> dict[str, Any]:
         row: dict[str, Any] = {self.id_column: material.material_id, "formula": material.formula}
-        row |= {f"{quantity}_DFT": material.reference[quantity] for quantity in self.reference_columns}
+        label = self.reference_label
+        row |= {f"{quantity}_{label}": material.reference[quantity] for quantity in self.reference_columns}
         row |= {f"{quantity}_{model_name}": value for quantity, value in prediction.items()}
         return row
 

@@ -1,4 +1,4 @@
-"""The benchmarks (MatCalc's and three tasks of Matbench Discovery) and a helper that runs several of them."""
+"""The benchmarks (MatCalc's, three tasks of Matbench Discovery, two molecular ones) and a helper to run several."""
 
 from __future__ import annotations
 
@@ -6,11 +6,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ._common import Benchmark, Material
+from .conformers import ConformerBenchmark
 from .diatomics import DiatomicsBenchmark
 from .discovery import DiscoveryBenchmark
 from .elasticity import ElasticityBenchmark
 from .equilibrium import EquilibriumBenchmark
 from .kappa import KappaBenchmark
+from .noncovalent import NoncovalentBenchmark
 from .phonon import PhononBenchmark
 from .softening import SofteningBenchmark
 
@@ -27,6 +29,8 @@ BENCHMARKS: dict[str, type[Benchmark]] = {
     "discovery": DiscoveryBenchmark,
     "kappa": KappaBenchmark,
     "diatomics": DiatomicsBenchmark,
+    "noncovalent": NoncovalentBenchmark,
+    "conformers": ConformerBenchmark,
 }
 """Benchmark classes by name."""
 
@@ -69,12 +73,14 @@ def run_benchmarks(
 __all__ = [
     "BENCHMARKS",
     "Benchmark",
+    "ConformerBenchmark",
     "DiatomicsBenchmark",
     "DiscoveryBenchmark",
     "ElasticityBenchmark",
     "EquilibriumBenchmark",
     "KappaBenchmark",
     "Material",
+    "NoncovalentBenchmark",
     "PhononBenchmark",
     "SofteningBenchmark",
     "run_benchmarks",

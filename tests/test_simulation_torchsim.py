@@ -150,6 +150,36 @@ def test_benchmarks_run_with_torchsim(
         assert_allclose(ts_table[f"{column}_lj"], ase_table[f"{column}_lj"], rtol=1e-3)
 
 
+def test_molecular_benchmarks_run_with_torchsim(ncia_dataset: Any, conformer_dataset: Any) -> None:
+    from matcalc import ConformerBenchmark, NoncovalentBenchmark
+
+    model = lj_model()
+    reference = ASESimulator(TorchSimModelCalculator(model), show_progress=False)
+    batched = TorchSimSimulator(model, show_progress=False)
+    for make, column in (
+        (lambda: NoncovalentBenchmark(ncia_dataset, sets=["D442x10", "IHB100x10", "R739x5"]), "interaction_energy"),
+        (lambda: ConformerBenchmark(conformer_dataset), "mae"),
+    ):
+        ase_table = make().run(reference, "lj")
+        ts_table = make().run(batched, "lj")
+        assert (ts_table["status_lj"] == "ok").all()
+        assert_allclose(ts_table[f"{column}_lj"], ase_table[f"{column}_lj"], rtol=1e-9, atol=1e-9)
+
+
+def test_charge_and_spin_of_molecules_reach_the_state() -> None:
+    from matcalc.structures import molecule_in_box
+
+    simulator = TorchSimSimulator(lj_model(), show_progress=False)
+    ion = molecule_in_box(["Cu", "Cu"], [[0, 0, 0], [2.5, 0, 0]], charge=1, multiplicity=2)
+    neutral = molecule_in_box(["Cu", "Cu"], [[0, 0, 0], [2.6, 0, 0]])
+    state = simulator._state([ion, neutral])
+    for name in ("charge", "total_charge"):
+        assert getattr(state, name).tolist() == [1.0, 0.0]
+    for name in ("spin", "total_spin"):
+        assert getattr(state, name).tolist() == [2.0, 1.0]
+    assert simulator._state([structure("Cu")])._system_extras == {}  # crystals carry neither
+
+
 def test_out_of_memory_is_retried_with_half_the_capacity() -> None:
     simulator = TorchSimSimulator(lj_model(), max_memory_scaler=1e9, show_progress=False)
     state = simulator._state(starting_structures())

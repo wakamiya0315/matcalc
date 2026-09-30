@@ -12,8 +12,10 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("code", choices=["upstream", "fork-ase", "fork-torchsim"])
-    parser.add_argument("benchmark", choices=["equilibrium", "elasticity", "phonon", "softening", "discovery", "kappa", "diatomics"])
-    parser.add_argument("--model", default="mace-matpes-pbe-0", help="MACE checkpoint (medium = MACE-MP-0)")
+    parser.add_argument("benchmark", choices=["equilibrium", "elasticity", "phonon", "softening", "discovery", "kappa",
+                                              "diatomics", "noncovalent", "conformers"])
+    parser.add_argument("--model", default="mace-matpes-pbe-0",
+                        help="MACE checkpoint (medium = MACE-MP-0, off-medium = MACE-OFF23 medium)")
     parser.add_argument("--n-samples", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", required=True)
@@ -62,6 +64,10 @@ def main() -> None:
         simulator = (TorchSimSimulator(model, show_progress=False) if backend == "torchsim"
                      else matcalc.ASESimulator(model, show_progress=False))
         options = {} if args.max_steps is None else {"max_steps": args.max_steps}
+        if args.benchmark in ("noncovalent", "conformers") and args.model.startswith("off-"):
+            from mace_models import MACE_OFF_ELEMENTS
+
+            options["elements"] = MACE_OFF_ELEMENTS  # the other complexes are skipped, as in MLIPAudit
         bench = matcalc.BENCHMARKS[args.benchmark](
             n_samples=args.n_samples, seed=args.seed, workers=args.workers, **options
         )
@@ -73,6 +79,9 @@ def main() -> None:
             extra["capacities"] = [round(c) for c in simulator.capacities]
     end = time.perf_counter()
     table = table[[c for c in table.columns if not c.startswith("structure_")]]
+    if args.benchmark == "conformers":  # lists of relative energies, kept as JSON strings in the CSV
+        for column in [c for c in table.columns if c.startswith("energies_")]:
+            table[column] = [json.dumps(v) if isinstance(v, list) else v for v in table[column]]
     table.to_csv(args.out, index=False)
     info = {"code": args.code, "model": args.model, "dtype": args.dtype, "workers": args.workers, "max_steps": args.max_steps,
             "benchmark": args.benchmark, "n": len(table), "setup_s": round(loaded - start, 1),
