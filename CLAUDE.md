@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this fork is
 
 A fork of materialyzeai/matcalc reduced to the four benchmarks (Equilibrium, Elasticity, Phonon,
-Softening), plus two Matbench Discovery tasks (Discovery: WBM stability and geometry; Kappa: κ_SRME). `main` is this fork (the refactoring and the TorchSim simulator); changes reach it through
+Softening), plus three Matbench Discovery tasks (Discovery: WBM stability and geometry; Kappa: κ_SRME; Diatomics: dimer curves). `main` is this fork (the refactoring and the TorchSim simulator); changes reach it through
 pull requests from feature branches, and CI (`.github/workflows/`) runs ruff, mypy and the CPU tests on
 them. `upstream-main` mirrors upstream's `main` and is never committed to (update it with
 `git fetch upstream && git push origin upstream/main:upstream-main`). Equilibrium, Elasticity and Softening
@@ -42,7 +42,7 @@ benchmark with MACE.
   and seeded subsampling, chunked `run()` with a JSON checkpoint (resume skips finished material ids), the
   result table (`<quantity>_DFT`, `<quantity>_<model>`, `status_<model>`), `summarize()` and per-stage
   timings (`with self.stage(name):`). `Material.settings` carries DFT settings a benchmark reuses.
-- `benchmarks/{equilibrium,elasticity,phonon,softening,discovery,kappa}.py` — one benchmark each. `read_entries()` parses
+- `benchmarks/{equilibrium,elasticity,phonon,softening,discovery,kappa,diatomics}.py` — one benchmark each. `read_entries()` parses
   the dataset; `evaluate(materials, simulator)` is the recipe: stages over all materials of a chunk.
   `benchmarks/data/alexandria-pbe-phonon.json.gz` is the Phonon dataset (unit cells, supercell and
   primitive matrices, displacements, C_V and stability of the DFT calculations);

@@ -15,6 +15,7 @@ Discovery and Kappa benchmarks, whose predictions Matbench Discovery publishes. 
 | `mace_models.py` | all | The test model: MACE-MatPES-PBE-0 as an ASE calculator or a TorchSim model from the same checkpoint (not part of matcalc). |
 | `phonon_dft_check.py` | V12 | The Phonon benchmark's phonopy step fed with the DFT forces of Alexandria's files: how well it gives back the DFT heat capacities and stability. |
 | `v17_phonon_symmetry.py` | V17 | The Phonon benchmark on a subset in three settings (as before 2026-09-28, the default that subtracts the residual forces, `use_symmetry=False`) for one MLIP, loaded by a `module:function` given on the command line, and the comparison of the three tables. |
+| `diatomics_curves.py` | section 9 | Diatomic curves of a MACE model (ASE or TorchSim) in Matbench Discovery's prediction format, compared point by point with its published curves. |
 | `matbench_discovery_check.py` | sections 7–8 | Discovery and Kappa runs against Matbench Discovery's published predictions, crystal by crystal; the leaderboard's κ metrics recomputed with matcalc's functions; the packaged κ reference against the published one; MP2020 corrections recomputed with the installed pymatgen. |
 
 Example (a V4-sized subset):

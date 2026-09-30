@@ -1,9 +1,9 @@
 # The benchmarks
 
-All six compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data: the
+All seven compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data: the
 Hugging Face dataset [`materialyze/matcalc-bench`](https://huggingface.co/datasets/materialyze/matcalc-bench)
 (Equilibrium, Elasticity, Softening), the packaged Phonon and Kappa datasets, and Matbench Discovery's WBM
-files (Discovery).
+files (Discovery) and dimer curves (Diatomics).
 Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å³; moduli are reported in GPa.
 
 Every benchmark is a sequence of stages over *all* materials of a chunk, and only two operations touch the
@@ -208,3 +208,36 @@ draw or other settings.
 Columns: `kappa_DFT`, and per model `kappa`, `srd`, `sre`, `srme`, `relax_steps`, `status` (`ok` or
 `censored: <reason>`). Summary: κ_SRME, κ_SRE, κ_SRD (means over the crystals), the failure rate and the rate
 of imaginary modes.
+
+## Diatomics — `DiatomicsBenchmark` (`benchmarks/diatomics.py`)
+
+Dataset: Matbench Discovery's PBE curves of the homonuclear dimers X2, X = H…U (`diatomics-dft.json.gz`,
+Figshare file 68541277, CC BY 4.0, downloaded on first use): VASP with Materials Project settings in a 15 Å
+box, 50 separations from 0.8 r_cov to 6 Å, at each separation the lowest of several constrained spin
+states, with a narrow cleaning of likely SCF artifacts (documented with the file). The benchmark scores the
+87 elements that the Materials Project covers (all but Po, At, Rn, Fr and Ra), as Matbench Discovery does.
+Reference: J. Riebesell et al., Nat. Mach. Intell. 7, 836 (2025); the smoothness metrics come from the MACE-MP
+paper (I. Batatia et al., arXiv:2401.00096) and MLIP Arena.
+
+1. **Single points** of every dimer at 119 log-spaced separations from 0.1 to 6 Å, one atom at the centre of a
+   50 Å box and the other along x (Matbench Discovery's grid); no relaxation.
+2. **Metrics** of each element's curve (`properties/diatomics.py`), in its window from 0.9 r_cov to
+   min(3.1 r_vdW, 6 Å):
+   - smoothness: tortuosity (1 for a single well), the number of sign changes of the energy steps and of
+     the force, the size of the steps at those changes (`energy_jump`, `force_jump`), and the total
+     variation of the force;
+   - against PBE: `pbe_energy_mae` (both curves shifted to zero at their largest separation) and
+     `pbe_force_mae` on 200 common points, the errors of the bond length, the well depth and the harmonic
+     vibrational wavenumber (cm⁻¹; quadratic fit of the five points around the minimum, for wells deeper
+     than 0.05 eV), and `pbe_wall_dist_mae`, the error of the separation at 1, 5, 10, 20, 50 and 100 eV
+     above the minimum, down to 0.8 r_cov.
+
+A curve with a non-finite energy or force between 0.8 r_cov and the end of its window gets no metrics;
+non-finite points below that range are left out. PBE curves too rough to score against (energy steps
+adding up to 1.5 eV at three or more sign changes in the window: 8 lanthanides in the current file) give
+their elements the smoothness metrics only.
+
+Columns: per model, the twelve metrics and `status`. Summary: the mean of each metric over the elements that
+have it, and `pbe_vib_freq_coverage`: how many of the elements whose PBE curve has a vibrational frequency
+got a frequency error.
+

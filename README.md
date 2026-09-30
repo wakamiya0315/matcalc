@@ -1,7 +1,7 @@
 # MatCalc benchmarks (fork)
 
 This is a fork of [materialyzeai/matcalc](https://github.com/materialyzeai/matcalc) reduced to its
-four benchmarks for machine-learning interatomic potentials (MLIPs), plus two tasks of
+four benchmarks for machine-learning interatomic potentials (MLIPs), plus three tasks of
 [Matbench Discovery](https://matbench-discovery.materialsproject.org) that need only relaxations and
 single points as well:
 
@@ -13,6 +13,7 @@ single points as well:
 | Softening | slope of MLIP forces against DFT forces on high-energy configurations | 979 WBM materials, 9,308 frames |
 | Discovery | stability against the convex hull (F1, DAF, `e_above_hull` MAE) and relaxed geometry (RMSD, symmetry) | 256,963 WBM crystals (Matbench Discovery) |
 | Kappa | lattice thermal conductivity at 300 K (κ_SRME, κ_SRE) | 103 PhononDB crystals (Matbench Discovery) |
+| Diatomics | potential-energy curves of dimers X2 from 0.1 to 6 Å: energy and force errors, bond length, well depth, vibrational frequency, repulsive wall, smoothness | 87 elements H–U (Matbench Discovery) |
 
 The unmodified upstream code (materialyzeai/matcalc at `b04715d`, 2026-09-09) is kept on the branch
 [`upstream-main`](https://github.com/wakamiya0315/matcalc/tree/upstream-main). Equilibrium,
@@ -113,7 +114,7 @@ src/matcalc/
                 phonon calculations)
   properties/   the physics as plain functions: elastic fit, phonons, formation energy,
                 softening scale, structural fingerprints, stability and geometry metrics,
-                thermal conductivity
+                thermal conductivity, diatomic curves
   simulation/   simulators: what evaluates the MLIP. ASESimulator relaxes (FIRE + Frechet cell
                 filter) and computes single points with any ASE calculator, one structure at a time;
                 TorchSimSimulator does the same in batches on the GPU
@@ -128,10 +129,10 @@ A benchmark only asks its simulator for two operations, `relax(structures, fmax,
 
 ## Differences from upstream
 
-Added: the Discovery and Kappa benchmarks, Matbench Discovery's discovery (with geometry optimization)
-and κ_SRME tasks written in the same form as the others (see [docs/benchmarks.md](docs/benchmarks.md)).
-Their data come from Matbench Discovery's Figshare (downloaded on first use) and, for the Kappa
-reference, from PhononDB's PBE force sets (packaged); both are CC BY 4.0.
+Added: the Discovery, Kappa and Diatomics benchmarks, Matbench Discovery's discovery (with geometry
+optimization), κ_SRME and diatomics tasks written in the same form as the others (see
+[docs/benchmarks.md](docs/benchmarks.md)). Their data come from Matbench Discovery's Figshare (downloaded on
+first use) and, for the Kappa reference, from PhononDB's PBE force sets (packaged); all are CC BY 4.0.
 
 Removed: every calculator the benchmarks do not use (adsorption, EOS, grain boundaries, interfaces,
 LAMMPS, MD, NEB, order, phonon3, QHA, surfaces), `ChainedCalc`, the multi-provider model registry, the

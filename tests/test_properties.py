@@ -235,3 +235,32 @@ def test_mp2020_correction_change_follows_the_oxide_type() -> None:
     assert change == pytest.approx(2 * (correction["oxide"] - correction["peroxide"]))
     assert mp2020_correction_change(li2o2(1.45), peroxide, -20.0, parameters) == 0
     assert mp2020_correction_change(peroxide, oxide, -20.0, parameters) == pytest.approx(-change)
+
+
+def test_diatomic_metrics_of_a_morse_curve() -> None:
+    from matcalc.properties.diatomics import (
+        DIMER_DISTANCES,
+        curve_metrics,
+        quadratic_well,
+        vibrational_wavenumber,
+        wall_radius,
+    )
+
+    depth, a, r_e = 2.0, 1.5, 2.2  # eV, 1/Å, Å
+    r = DIMER_DISTANCES
+    decay = np.exp(-a * (r - r_e))
+    energies = depth * (1 - decay) ** 2 - depth
+    forces = np.zeros((len(r), 2, 3))
+    forces[:, 0, 0] = 2 * depth * a * decay * (1 - decay)  # dE/dr pulls the first atom towards the second
+    forces[:, 1, 0] = -forces[:, 0, 0]
+    metrics = curve_metrics("Cu", r, energies, forces, reference=(r, energies, forces))
+    # A single smooth well: tortuosity 1 and one change of sign of the energy steps and of the force.
+    assert metrics["tortuosity"] == pytest.approx(1.0)
+    assert metrics["energy_diff_flips"] == 1
+    assert metrics["force_flips"] == 1
+    assert all(metrics[k] == 0 for k in ("pbe_energy_mae", "pbe_force_mae", "pbe_wall_dist_mae", "pbe_vib_freq_error"))
+    assert quadratic_well(r, energies)[0] == pytest.approx(r_e, abs=0.02)
+    # The wall at 1 eV above the minimum: E - E_min = D (1 - exp(-a (r - r_e)))^2
+    assert wall_radius(r, energies, 1.0) == pytest.approx(r_e - np.log(1 + np.sqrt(1.0 / depth)) / a, abs=0.01)
+    # H2: a curvature of 35.9 eV/Å² (575 N/m) is the measured 4401 cm⁻¹
+    assert vibrational_wavenumber("H", 35.9) == pytest.approx(4401, rel=0.01)

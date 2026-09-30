@@ -8,7 +8,8 @@ The benchmarks (see ``docs/benchmarks.md``):
 - ``SofteningBenchmark``: systematic softening of forces on high-energy configurations (WBM);
 - ``DiscoveryBenchmark``: stability of hypothetical crystals and their relaxed geometry (WBM, Matbench
   Discovery);
-- ``KappaBenchmark``: lattice thermal conductivity at 300 K (PhononDB, Matbench Discovery's κ_SRME).
+- ``KappaBenchmark``: lattice thermal conductivity at 300 K (PhononDB, Matbench Discovery's κ_SRME);
+- ``DiatomicsBenchmark``: potential-energy curves of homonuclear dimers (PBE, Matbench Discovery).
 
 Each benchmark asks a *simulator* for relaxations and single points: ``ASESimulator`` works with any
 ASE calculator, ``matcalc.simulation.TorchSimSimulator`` with any TorchSim model. The MLIP itself is
@@ -28,6 +29,7 @@ from importlib.metadata import PackageNotFoundError, version
 from .benchmarks import (
     BENCHMARKS,
     Benchmark,
+    DiatomicsBenchmark,
     DiscoveryBenchmark,
     ElasticityBenchmark,
     EquilibriumBenchmark,
@@ -51,6 +53,7 @@ __all__ = [
     "BENCHMARKS",
     "ASESimulator",
     "Benchmark",
+    "DiatomicsBenchmark",
     "DiscoveryBenchmark",
     "ElasticityBenchmark",
     "EquilibriumBenchmark",
