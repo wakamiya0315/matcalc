@@ -8,6 +8,15 @@ it with coupled-cluster energies of molecules, as MLIPAudit does.
 Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å³; moduli are reported in GPa; the
 molecular benchmarks report energies in kcal/mol, as their references do.
 
+The molecular benchmarks measure energy differences of a fraction of a kcal/mol to a few kcal/mol between
+structures whose total energies are large when an MLIP's energies include the atomic energies of
+all-electron quantum chemistry, as for MLIPs trained on molecular data (with MACE-OFF23, about 1.5·10⁴ eV for
+a typical complex and 3.4·10⁴ eV for a typical conformer, up to 3.5·10⁵ eV). In float32 such a total energy
+is a whole multiple of 0.01–0.09 kcal/mol for most of these structures (up to 0.36 kcal/mol for the largest
+conformers and 0.72 kcal/mol for the heaviest complexes), and the order in which a GPU sums the atomic
+energies moves it by several of these steps. **Evaluate the MLIP in float64 for the molecular benchmarks**;
+results in float32, such as MLIPAudit's, carry this rounding ([validation.md](validation.md), section 10).
+
 Every benchmark is a sequence of stages over *all* materials of a chunk, and only two operations touch the
 MLIP: `relax` and `single_point` of a simulator (`src/matcalc/simulation/`). Relaxations use the FIRE
 optimizer on a Frechet cell filter, so atomic positions and the cell relax together. In Equilibrium and
@@ -262,8 +271,8 @@ separations (scaled from 1.0 to 1.25), with CCSD(T)/CBS interaction energies at 
 | SH250x10 | 250 | Sigma hole | K. Kříž, J. Řezáč, Phys. Chem. Chem. Phys. 24, 14794 (2022) |
 
 The recipe and the metrics are those of the noncovalent-interactions benchmark of MLIPAudit (L. Wehrhan et
-al., arXiv:2511.20487), whose published results the benchmark reproduces
-([validation.md](validation.md), section 10):
+al., arXiv:2511.20487), whose published results the benchmark reproduces up to the rounding of MLIPAudit's
+float32 energies ([validation.md](validation.md), section 10):
 
 1. **Single points** of every point of every curve: the complex in a 50 Å periodic box
    (`structures.molecule_in_box`, at least 40 Å wider than the complex), its total charge in
@@ -290,7 +299,8 @@ repository at commit `0109c8e`, a 41 MB archive, MD5-checked, downloaded on firs
 of each of 702 drug-like molecules (86 of them ions, charges −1 to +2; elements H, C, N, O, F, P, S, Cl,
 Br), optimized with B3LYP-D3BJ, with DLPNO-CCSD(T) single-point energies.
 
-The recipe and the metrics are those of MLIPAudit's conformer-selection benchmark:
+The recipe and the metrics are those of MLIPAudit's conformer-selection benchmark (compared with its
+published results in [validation.md](validation.md), section 10):
 
 1. The 693 molecules with at least three conformers (`MIN_CONFORMERS`).
 2. **Single points** of their 6,745 conformers, each in a 50 Å periodic box with its charge in `Atoms.info`;

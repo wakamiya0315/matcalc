@@ -2,8 +2,9 @@
 
 How the refactored code and the TorchSim simulator were checked, and how fast they are. The MLIP of the
 runs is MACE-MatPES-PBE-0 in float64, used only as a test model (it is not part of matcalc; see
-`validation/mace_models.py`); sections 7 and 8 use MACE-MP-0 instead, whose predictions Matbench Discovery
-publishes material by material. Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
+`validation/mace_models.py`); sections 7–9 use MACE-MP-0 instead, whose predictions Matbench Discovery
+publishes material by material, and section 10 MACE-OFF23, whose results MLIPAudit publishes system by
+system. Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
 (`gpu_h`); quick checks on the shared interactive node. Software: torch 2.14.0+cu126, torch-sim-atomistic
 0.6.2, moyopy 0.20.0, mace-torch 0.3.16, ase 3.29.0, pymatgen 2026.9.23, phonopy 4.6.0. Scripts are in
 [`validation/`](../validation/).
@@ -425,3 +426,52 @@ in all twelve metrics. ASE gives the same curves (within 3e-12 eV of the publish
 agree with TorchSim's within 1e-13, with the same status for every element. Wall time: 17.6 s with TorchSim,
 192 s with ASE (Matbench Discovery reports 269 s for its ASE run on a full H100).
 
+## 10. Noncovalent and Conformers with MACE-OFF23
+
+MLIPAudit publishes its results system by system (`InstaDeepAI/mlipaudit-results` on Hugging Face, revision
+`953a4bf`, 2026-09-10); `MACE-OFF_ext` is MACE-OFF23 (medium). The runs below use the same checkpoint
+(`validation/run_one.py --model off-medium`, which skips the complexes with elements outside MACE-OFF23's
+ten, as MLIPAudit does) and are compared with `validation/mlipaudit_check.py`.
+
+**The data and the metrics.** The reference interaction energies of all 2,206 complexes are MLIPAudit's
+(within 2e-15 kcal/mol), and so are their energy profiles, data sets and groups; the reference relative
+energies of the 6,745 conformers agree within 7e-9 kcal/mol (the Hartree-to-kcal/mol factor). The same 1,728
+complexes are evaluated (478 skipped) and the same 693 molecules. Fed MLIPAudit's own MLIP energies,
+`NoncovalentBenchmark.summarize` returns its published MAE and RMSE overall, for the 5 data sets and the 39
+subsets within 4e-15 kcal/mol (and for the 44 subsets of MACE-MP-0, which has all 2,206 complexes), and
+`properties.molecules.conformer_errors` its MAE, RMSE and Spearman correlation of every molecule within 4e-9.
+
+**The runs** (one `gpu_h` slice; MAE and RMSE in kcal/mol, the conformer values averaged over the molecules;
+time of the single points):
+
+| | Noncovalent MAE / RMSE | Conformers MAE / RMSE / Spearman | Time Noncovalent / Conformers |
+|---|---|---|---|
+| MLIPAudit, published | 1.3045 / 2.3350 | 0.3923 / 0.4861 / 0.754 | |
+| ASE, float32 | 1.3046 / 2.3350 | 0.3918 / 0.4846 / 0.747 | 289 s / 133 s |
+| TorchSim, float32 | 1.3047 / 2.3355 | 0.4495 / 0.5569 / 0.673 | 41 s / 34 s |
+| ASE, float64 | 1.3061 / 2.3354 | 0.3567 / 0.4408 / 0.791 | 280 s / 131 s |
+| TorchSim, float64 | 1.3061 / 2.3354 | 0.3567 / 0.4408 / 0.791 | 33 s / 46 s |
+
+MLIPAudit computed its energies in float32: every difference between two float32 evaluations, ours with ASE
+or TorchSim and MLIPAudit's, is a whole number of float32 steps of the total energy of the complex or
+molecule (within 5e-9 of a whole number, for every complex and conformer). With ASE in float32, 98.9 % of
+the interaction energies are MLIPAudit's to the last bit and the others differ by one or two steps (at most
+0.045 kcal/mol); the published summary is reproduced within 6e-5 kcal/mol overall, 4e-4 per data set and
+9e-4 per subset. The conformers, larger molecules with larger steps, keep 69 % of their relative energies to
+the last bit, but the others differ by up to 38 steps (3.6 kcal/mol): the order in which the GPU sums the
+atomic energies changes from one evaluation to the next, and the atomic energies of MACE-OFF23 make the
+total energies 10⁴–10⁵ eV.
+
+In float64, TorchSim and ASE agree within 2e-9 kcal/mol (interaction energies) and 9e-9 kcal/mol
+(conformer energies), with the same Spearman correlation for every molecule. Against these values the
+float32 energies, MLIPAudit's as ours with ASE, are off by up to 0.51 kcal/mol for the interaction energies
+(3 % of the complexes by more than 0.1 kcal/mol) and by up to 2.7 kcal/mol for the relative conformer
+energies (19 % by more than 0.1 kcal/mol). The rounding hardly moves the interaction-energy summary
+(MAE 1.3045 in float32, 1.3061 in float64) but inflates the conformer errors: MACE-OFF23's mean MAE is
+0.357 kcal/mol in float64 against the 0.392 published, and its mean Spearman correlation 0.791 against
+0.754. TorchSim in float32 sums larger batches in another order and rounds about twice as much (conformer
+MAE 0.450), hence the advice to run these benchmarks in float64 ([benchmarks.md](benchmarks.md)).
+
+Time: TorchSim computes the 14,650 single points of Noncovalent 7–8 times faster than ASE and the 6,745
+larger ones of Conformers 3–4 times faster; about half of its 33–46 s is the one-time memory probe of the
+smallest and the largest structure (16–20 s).

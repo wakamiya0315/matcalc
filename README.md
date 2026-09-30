@@ -52,9 +52,14 @@ print(benchmark.summarize(table, "my-mlip"))
 
 The Equilibrium, Elasticity and Softening datasets are downloaded from Hugging Face on first use; the
 Phonon and Kappa datasets are part of the package; Discovery and Diatomics download Matbench Discovery's
-Figshare files, Noncovalent and Conformers their files on GitHub (at fixed commits, MD5-checked). `run` returns the result table; the checkpoint file keeps all
-finished rows (including structures), so an interrupted run resumes from it. `matcalc.run_benchmarks`
-runs several benchmarks for several models and writes the tables.
+Figshare files, Noncovalent and Conformers their files on GitHub (at fixed commits, MD5-checked). `run`
+returns the result table; the checkpoint file keeps all finished rows (including structures), so an
+interrupted run resumes from it. `matcalc.run_benchmarks` runs several benchmarks for several models and
+writes the tables.
+
+Evaluate the MLIP in float64 for Noncovalent and Conformers: in float32 the rounding of the large total
+energies of molecules is comparable to the energy differences these benchmarks measure
+([docs/validation.md](docs/validation.md), section 10).
 
 ## Batched GPU runs with TorchSim
 

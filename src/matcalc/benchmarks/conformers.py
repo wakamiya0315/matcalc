@@ -6,7 +6,8 @@ molecules (86 of them ions; elements H, C, N, O, F, P, S, Cl, Br), optimized wit
 DLPNO-CCSD(T) single-point energies. The repository at a fixed commit (a 41 MB archive) is downloaded on
 first use.
 
-Recipe (as MLIPAudit's conformer-selection benchmark, whose published results it reproduces):
+Recipe (as MLIPAudit's conformer-selection benchmark, whose published results it reproduces up to the
+rounding of MLIPAudit's float32 energies; see ``docs/validation.md``):
 
 1. The molecules with at least ``MIN_CONFORMERS`` conformers (693).
 2. Single points of every conformer (the molecule in a large periodic box, its charge in ``info``; no
@@ -16,6 +17,9 @@ Recipe (as MLIPAudit's conformer-selection benchmark, whose published results it
    (``properties.molecules``). The summary averages them over the molecules.
 
 Molecules containing elements outside ``elements`` (the ones the model supports, if given) are skipped.
+Evaluate the MLIP in float64 when its energies include the atomic energies of all-electron quantum chemistry
+(MLIPs trained on molecular data): conformer energies differ by fractions of a kcal/mol, while a float32
+total energy of these molecules is then a multiple of up to 0.36 kcal/mol (with MACE-OFF23).
 """
 
 from __future__ import annotations

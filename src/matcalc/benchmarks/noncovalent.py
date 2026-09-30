@@ -13,8 +13,8 @@ separations (scaled from 1.0 to 1.25), with CCSD(T)/CBS interaction energies at 
 - R739x5: repulsive contacts (K. Kříž, M. Nováček, J. Řezáč, J. Chem. Theory Comput. 17, 1548 (2021));
 - SH250x10: sigma-hole interactions (K. Kříž, J. Řezáč, Phys. Chem. Chem. Phys. 24, 14794 (2022)).
 
-Recipe (as MLIPAudit's noncovalent-interactions benchmark, whose published results it reproduces; see
-``docs/validation.md``):
+Recipe (as MLIPAudit's noncovalent-interactions benchmark, whose published results it reproduces up to the
+rounding of MLIPAudit's float32 energies; see ``docs/validation.md``):
 
 1. Single points of every point of every curve (the complex in a large periodic box, its total charge in
    ``info``; no relaxation).
@@ -22,6 +22,9 @@ Recipe (as MLIPAudit's noncovalent-interactions benchmark, whose published resul
    repulsive contacts) minus the energy at the largest separation (``properties.molecules``), in kcal/mol.
 
 Complexes containing elements outside ``elements`` (the ones the model supports, if given) are skipped.
+Evaluate the MLIP in float64 when its energies include the atomic energies of all-electron quantum chemistry
+(MLIPs trained on molecular data): a float32 total energy of these complexes is then a multiple of up to
+0.7 kcal/mol (with MACE-OFF23), a sizeable part of many interaction energies.
 """
 
 from __future__ import annotations
