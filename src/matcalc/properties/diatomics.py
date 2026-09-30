@@ -240,7 +240,7 @@ def wall_error(
 def is_rough(element: str, distances: ArrayLike, energies: ArrayLike) -> bool:
     """Whether a reference curve is too jumpy to score against.
 
-    It is when, in the window, its energy steps at sign changes add up to ``ROUGH_JUMP`` with at least
+    It is when, in the window, the energy steps at sign changes add up to at least ``ROUGH_JUMP`` eV with at least
     ``ROUGH_CHANGES`` changes, or when it has non-finite energies there.
     """
     distances, energies = np.asarray(distances, dtype=float), np.asarray(energies, dtype=float)
