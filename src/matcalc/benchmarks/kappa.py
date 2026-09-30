@@ -211,8 +211,8 @@ class KappaBenchmark(Benchmark):
 
         The conductivities (phono3py, CPU only) take almost all of the time of the benchmark. With this method
         and ``run_saved_forces`` the MLIP runs on a GPU node and the conductivities on a node with many CPU
-        cores: for MACE-MP-0 on TSUBAME4, 19 min on an H100 MIG slice, then 44 min on 16 cores, where the slice
-        alone, with its 4 cores, did not finish in 2 h 15 min.
+        cores: for MACE-MP-0 on TSUBAME4, 19 min on an H100 MIG slice, then 44 min on 16 cores, instead of 2 h
+        45 min on the slice alone with its 4 cores.
 
         Args:
             model: An ASE calculator, a TorchSim model, or a simulator.

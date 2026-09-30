@@ -193,7 +193,9 @@ which is why the reference is recomputed with the solver that the benchmark uses
 The conductivities, on the CPU, take almost all of the time (about 99 % of a crystal's work) and scale with
 the cores: phono3py ≥ 4.7 computes them with its Rust backend, whose threads are set by `RAYON_NUM_THREADS`
 (`OMP_NUM_THREADS` only sets those of its C code); set both so that `workers` × threads fits the cores.
-Since the MLIP's part (relaxations and single points) is short, the conductivities can run on another node:
+Since the MLIP's part (relaxations and single points) is short, the conductivities can run on another node
+(for MACE-MP-0 on TSUBAME4: 19 min on an H100 MIG slice, then 44 min on 16 cores, instead of 2 h 45 min on
+the slice with its 4 cores):
 
 ```python
 KappaBenchmark().save_forces(model, "kappa-forces.pkl")  # GPU node: steps 1-3, saves the phono3py inputs
