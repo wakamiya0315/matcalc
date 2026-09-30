@@ -19,6 +19,7 @@ Discovery, Kappa and Diatomics benchmarks, whose predictions Matbench Discovery 
 | `diatomics_curves.py` | section 9 | Diatomic curves of a MACE model (ASE or TorchSim) in Matbench Discovery's prediction format, compared point by point with its published curves. |
 | `mlipaudit_check.py` | sections 10–11 | Noncovalent, Conformers and Reactions runs against MLIPAudit's published results for the same model, complex by complex, molecule by molecule and reaction by reaction, and MLIPAudit's summary against `summarize` on the run. |
 | `tsubame_discovery_shards.sh`, `merge_shards.py` | — | The whole Discovery benchmark as a TSUBAME job array of four shards (one `gpu_h` slice each), and the join of their tables with the metrics of the whole run. |
+| `gmtkn55_check.py` | section 12 | GMTKN55Benchmark given the PBEh-3c energies that the GMTKN55 repository ships, against the repository's published PBEh-3c reaction energies and WTMAD-2. |
 | `matbench_discovery_check.py` | sections 7–8 | Discovery and Kappa runs against Matbench Discovery's published predictions, crystal by crystal; the leaderboard's κ metrics recomputed with matcalc's functions; the packaged κ reference against the published one; MP2020 corrections recomputed with the installed pymatgen. |
 
 Example (a V4-sized subset):

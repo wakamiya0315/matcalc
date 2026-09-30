@@ -3,8 +3,8 @@
 The first seven compare a machine-learning interatomic potential (MLIP) with DFT (PBE) reference data: the
 Hugging Face dataset [`materialyze/matcalc-bench`](https://huggingface.co/datasets/materialyze/matcalc-bench)
 (Equilibrium, Elasticity, Softening), the packaged Phonon and Kappa datasets, and Matbench Discovery's WBM
-files (Discovery) and dimer curves (Diatomics). The three molecular benchmarks (Noncovalent, Conformers,
-Reactions) compare it with coupled-cluster energies of molecules, as MLIPAudit does.
+files (Discovery) and dimer curves (Diatomics). The four molecular benchmarks (Noncovalent, Conformers,
+Reactions, GMTKN55) compare it with coupled-cluster-quality energies of molecules.
 Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å³; moduli are reported in GPa; the
 molecular benchmarks report energies in kcal/mol, as their references do.
 
@@ -359,3 +359,39 @@ transition states with the ωB97X-D3 energies of Grambow et al. and their produc
 Columns: `barrier_ref`, `reaction_energy_ref`, per model `barrier`, `reaction_energy` and `status`, and
 `n_products`. Summary: MAE, RMSE and mean signed error ME (prediction minus reference, kcal/mol) of the
 barrier heights and of the reaction energies, and the counts.
+
+## GMTKN55 — `GMTKN55Benchmark` (`benchmarks/gmtkn55.py`)
+
+Dataset: GMTKN55 (L. Goerigk, A. Hansen, C. Bauer, S. Ehrlich, A. Najibi, S. Grimme, Phys. Chem. Chem. Phys.
+19, 32184 (2017); [grimme-lab/GMTKN55](https://github.com/grimme-lab/GMTKN55), CC BY 4.0), the standard
+database of main-group thermochemistry, kinetics and noncovalent interactions: 1,505 relative energies
+(reaction energies, barrier heights, conformer and noncovalent interaction energies) of 2,442 molecules and
+complexes (H to Bi, 1 to 81 atoms; neutral and ionic, closed- and open-shell) in 55 subsets of five
+categories, with high-level references (mostly CCSD(T)/CBS or W-n). The benchmark uses the repository's `v1`
+branch, the original publication, at commit `8d485b3` (a 39 MB archive, MD5-checked, downloaded on first
+use); the `v2` branch, which updates 251 references and drops 10 spin-contaminated reactions, is still
+changing, and at its commit `ccabc16` its WATER27 reactions name molecules that it does not contain.
+
+The recipe and the metric are those of the evaluator of the repository, whose results for PBEh-3c the
+benchmark reproduces ([validation.md](validation.md), section 12):
+
+1. **Single points** of the molecules of the reactions, each once however many reactions use it (BH76RC
+   reuses BH76's molecules): geometries of `struc.xyz` in a 50 Å box, charge and number of unpaired electrons
+   of the `.CHRG` and `.UHF` files in `Atoms.info` (charge, spin multiplicity); no relaxation.
+2. **Reaction energies** Σ_i c_i E_i (kcal/mol) with the coefficients of the subsets' `.res` files, read as the
+   evaluator reads them (shell comments dropped, braces expanded).
+3. **WTMAD-2** = Σ_i N_i (⟨|ΔE|⟩ / |ΔE|_i) MAD_i / Σ_i N_i, overall and per category, with N_i the number of
+   reactions of subset i, MAD_i their mean absolute deviation, |ΔE|_i their mean absolute reference energy and
+   ⟨|ΔE|⟩ the mean of the |ΔE|_i (57.82 kcal/mol for the whole set), all taken over the reactions evaluated.
+
+`elements`, `charges=(lowest, highest)` and `max_unpaired_electrons` skip the reactions with a molecule
+outside them, as the evaluator's filters do: 1,291 reactions remain for the ten elements of MACE-OFF23, 916
+for neutral closed-shell molecules. The WTMAD-2 of a filtered run covers only those reactions and is not
+comparable with that of the whole set, so the summary lists every subset with its number of reactions. An MLIP
+that ignores charge and spin gets its largest errors from the ions and radicals (ionization potentials,
+electron affinities, radical reactions).
+
+Columns: `energy_ref`, per model `energy` and `status`, `subset` and `category`; `formula` is the reaction
+(`"a + 2 b -> c"`). Summary: `WTMAD-2` (`total`, small reactions, large reactions, barrier heights,
+intermolecular NCI, intramolecular NCI, all NCI), `mean_abs_reference` (⟨|ΔE|⟩) and per subset N, |ΔE|_i,
+MAE, RMSE and mean signed error ME (kcal/mol).

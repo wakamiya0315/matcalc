@@ -446,3 +446,59 @@ def rdb7_dataset(tmp_path: Path) -> Path:
                 add(f"{folder}/{name}", log(atoms, _emt_energies([atoms])[0] / units.Hartree - 100.0 / len(products)))
         add("qm_logs/rxn000000/._r000000.log", "Mac OS X metadata")
     return path
+
+
+@pytest.fixture
+def gmtkn55_dataset(tmp_path: Path) -> Path:
+    """A zip archive in the layout of the GMTKN55 repository, with Cu and Au clusters and EMT references.
+
+    W4-11: atomization of Cu2 (a lone Cu atom with one unpaired electron); BH76: a Cu3 "barrier" written with
+    braces, and BH76RC (its .resRC) using the same molecules; IL16: a cation, an anion (with Au) and their pair,
+    whose reference is 1 kcal/mol below EMT's value.
+    """
+    import zipfile
+
+    from matcalc.properties.molecules import KCAL_PER_MOL
+    from matcalc.structures import molecule_in_box
+
+    def chain(symbols: list[str], bond: float) -> Atoms:
+        return molecule_in_box(symbols, [[bond * k, 0.3 * k * k, 0.0] for k in range(len(symbols))])
+
+    molecules = {
+        "W4-11/cu2": (chain(["Cu", "Cu"], 2.3), 0, 0),
+        "W4-11/cu": (chain(["Cu"], 2.3), 0, 1),
+        "BH76/r": (chain(["Cu", "Cu", "Cu"], 2.4), 0, 0),
+        "BH76/ts": (chain(["Cu", "Cu", "Cu"], 2.9), 0, 0),
+        "BH76/a": (chain(["Cu", "Cu"], 2.35), 0, 0),
+        "BH76/b": (chain(["Cu"], 2.3), 0, 1),
+        "IL16/cation": (chain(["Cu", "Cu"], 2.5), 1, 0),
+        "IL16/anion": (chain(["Au"], 2.5), -1, 0),
+        "IL16/pair": (chain(["Cu", "Cu", "Au"], 2.6), 0, 0),
+    }
+    energy = {key: _emt_energies([atoms])[0] / KCAL_PER_MOL for key, (atoms, _, _) in molecules.items()}
+
+    def reference(coefficients: dict[str, float]) -> float:
+        return sum(c * energy[key] for key, c in coefficients.items())
+
+    definitions = {
+        "W4-11/.res": f"$tmer cu2/$f cu/$f x -1 2 $w {reference({'W4-11/cu2': -1, 'W4-11/cu': 2}):.10f} 0 1 # atoms\n",
+        "BH76/.res": f"$tmer {{r,ts}}/$f x -1 1 $w {reference({'BH76/r': -1, 'BH76/ts': 1}):.10f}\n",
+        "BH76/.resRC": f"$tmer r/$f a/$f b/$f x -1 1 1 $w {reference({'BH76/r': -1, 'BH76/a': 1, 'BH76/b': 1}):.10f}\n",
+        "IL16/.res": (
+            "$tmer cation/$f anion/$f pair/$f x -1 -1 1 $w "
+            f"{reference({'IL16/cation': -1, 'IL16/anion': -1, 'IL16/pair': 1}) - 1.0:.10f}\n"
+        ),
+    }
+    root = "GMTKN55-0123abc"
+    path = tmp_path / "gmtkn55.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(f"{root}/", "")
+        archive.writestr(f"{root}/.res", "# the script that runs every subset\n")
+        for name, text in definitions.items():
+            archive.writestr(f"{root}/{name}", "f=$1\nw=$2\n\n" + text)
+        for key, (atoms, charge, unpaired) in molecules.items():
+            archive.writestr(f"{root}/{key}/struc.xyz", _xyz(atoms, ""))
+            archive.writestr(f"{root}/{key}/.CHRG", f"{charge}\n")
+            if unpaired:
+                archive.writestr(f"{root}/{key}/.UHF", f"{unpaired}\n")
+    return path

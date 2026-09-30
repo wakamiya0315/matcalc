@@ -2,8 +2,9 @@
 
 This is a fork of [materialyzeai/matcalc](https://github.com/materialyzeai/matcalc) reduced to its
 four benchmarks for machine-learning interatomic potentials (MLIPs), plus three tasks of
-[Matbench Discovery](https://matbench-discovery.materialsproject.org) and three molecular tasks of
-[MLIPAudit](https://github.com/instadeepai/mlipaudit) that need only relaxations and single points as well:
+[Matbench Discovery](https://matbench-discovery.materialsproject.org), three molecular tasks of
+[MLIPAudit](https://github.com/instadeepai/mlipaudit) and the [GMTKN55](https://github.com/grimme-lab/GMTKN55)
+database, which need only relaxations and single points as well:
 
 | Benchmark | Compared with the reference | Reference data |
 |---|---|---|
@@ -17,6 +18,7 @@ four benchmarks for machine-learning interatomic potentials (MLIPs), plus three 
 | Noncovalent | interaction energies of molecular complexes from their dissociation curves (MAE, RMSE in kcal/mol) | 2,206 complexes of the NCI Atlas (CCSD(T)/CBS) |
 | Conformers | relative energies of the conformers of drug-like molecules (MAE, RMSE in kcal/mol, Spearman correlation) | 6,745 conformers of 693 molecules (Folmsbee and Hutchison, DLPNO-CCSD(T)) |
 | Reactions | barrier heights and reaction energies of elementary organic reactions (MAE, RMSE, mean error in kcal/mol) | 11,926 reactions of RDB7 (CCSD(T)-F12a) |
+| GMTKN55 | main-group thermochemistry, barrier heights and noncovalent interactions (WTMAD-2, MAE per subset in kcal/mol) | 1,505 relative energies of GMTKN55 (mostly CCSD(T)/CBS and W-n) |
 
 The unmodified upstream code (materialyzeai/matcalc at `b04715d`, 2026-09-09) is kept on the branch
 [`upstream-main`](https://github.com/wakamiya0315/matcalc/tree/upstream-main). Equilibrium,
@@ -54,7 +56,7 @@ print(benchmark.summarize(table, "my-mlip"))
 The Equilibrium, Elasticity and Softening datasets are downloaded from Hugging Face on first use; the
 Phonon and Kappa datasets are part of the package; Discovery and Diatomics download Matbench Discovery's
 Figshare files, Noncovalent and Conformers their files on GitHub (at fixed commits) and Reactions RDB7's
-file on Zenodo (all MD5-checked). `run`
+file on Zenodo and GMTKN55 its GitHub repository (all MD5-checked). `run`
 returns the result table; the checkpoint file keeps all finished rows (including structures), so an
 interrupted run resumes from it. `matcalc.run_benchmarks` runs several benchmarks for several models and
 writes the tables.
@@ -151,8 +153,8 @@ optimization), κ_SRME and diatomics tasks written in the same form as the other
 first use) and, for the Kappa reference, from PhononDB's PBE force sets (packaged); all are CC BY 4.0.
 Also added: the Noncovalent, Conformers and Reactions benchmarks, MLIPAudit's noncovalent-interaction,
 conformer-selection and reactivity tasks, on the NCI Atlas dissociation curves (CC BY 4.0), the conformers
-of Folmsbee and Hutchison (MIT) and the RDB7 reactions with CCSD(T)-F12a energies (CC BY 4.0), downloaded
-from GitHub and Zenodo on first use.
+of Folmsbee and Hutchison (MIT) and the RDB7 reactions with CCSD(T)-F12a energies (CC BY 4.0), and the
+GMTKN55 benchmark on the GMTKN55 database (CC BY 4.0), downloaded from GitHub and Zenodo on first use.
 
 Removed: every calculator the benchmarks do not use (adsorption, EOS, grain boundaries, interfaces,
 LAMMPS, MD, NEB, order, phonon3, QHA, surfaces), `ChainedCalc`, the multi-provider model registry, the
@@ -210,4 +212,5 @@ Chem. Phys. 24, 14780 (2022); K. Kříž, J. Řezáč, Phys. Chem. Chem. Phys. 2
 conformer benchmark, D. L. Folmsbee, G. R. Hutchison, Int. J. Quantum Chem. 121, e26381 (2021); for the
 reaction benchmark, K. A. Spiekermann, L. Pattanaik, W. H. Green, Sci. Data 9, 417 (2022), and C. A.
 Grambow, L. Pattanaik, W. H. Green, Sci. Data 7, 137 (2020); for all three, MLIPAudit (L. Wehrhan et al.,
-arXiv:2511.20487).
+arXiv:2511.20487); for the GMTKN55 benchmark, L. Goerigk, A. Hansen, C. Bauer, S. Ehrlich, A. Najibi, S.
+Grimme, Phys. Chem. Chem. Phys. 19, 32184 (2017).

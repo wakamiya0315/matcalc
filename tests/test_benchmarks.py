@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -445,3 +445,61 @@ def test_discovery_shards_split_the_draw_and_merge_back(discovery_dataset: Path)
         DiscoveryBenchmark.merge_shards([tables[0], tables[0]])
     with pytest.raises(ValueError, match="0 <= k < n"):
         DiscoveryBenchmark(discovery_dataset, shard=(3, 3))
+
+
+def test_gmtkn55(gmtkn55_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from matcalc import GMTKN55Benchmark
+
+    benchmark = GMTKN55Benchmark(gmtkn55_dataset)
+    assert [m.material_id for m in benchmark.materials] == ["BH76:1", "BH76RC:1", "IL16:1", "W4-11:1"]
+    assert benchmark.materials[1].formula == "r -> a + b"
+    assert benchmark.molecules["W4-11/cu"].info["spin"] == 2
+    assert benchmark.molecules["IL16/cation"].info["charge"] == 1
+    evaluated: list[int] = []
+
+    class Counting:
+        def relax(self, *args: Any, **kwargs: Any) -> Any:
+            raise NotImplementedError
+
+        def single_point(self, structures: list, **kwargs: Any) -> Any:
+            evaluated.append(len(structures))
+            return emt_simulator.single_point(structures, **kwargs)
+
+    table = benchmark.run(Counting(), "emt").set_index("reaction")
+    assert evaluated == [len(benchmark.molecules)]  # each molecule once; BH76 and BH76RC share theirs
+    assert (table["status_emt"] == "ok").all()
+    deviation = table["energy_emt"] - table["energy_ref"]
+    assert deviation.drop("IL16:1").abs().max() < 1e-6
+    assert deviation["IL16:1"] == pytest.approx(1.0)
+    summary = benchmark.summarize(table.reset_index(), "emt")
+    subsets = summary["subsets"]
+    assert {name: s["N"] for name, s in subsets.items()} == {"BH76": 1, "BH76RC": 1, "IL16": 1, "W4-11": 1}
+    mean_abs = np.mean([s["mean_abs_reference"] for s in subsets.values()])
+    assert summary["mean_abs_reference"] == pytest.approx(mean_abs)
+    assert summary["WTMAD-2"]["total"] == pytest.approx(mean_abs * 1.0 / subsets["IL16"]["mean_abs_reference"] / 4)
+    assert summary["WTMAD-2"]["intermolecular NCI"] == pytest.approx(mean_abs / subsets["IL16"]["mean_abs_reference"])
+    assert summary["WTMAD-2"]["barrier heights"] == pytest.approx(0.0, abs=1e-6)
+    assert np.isnan(summary["WTMAD-2"]["intramolecular NCI"])
+
+
+def test_gmtkn55_filters_skip_whole_reactions(gmtkn55_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from matcalc import GMTKN55Benchmark
+
+    def skipped(**filters: Any) -> list[str]:
+        table = GMTKN55Benchmark(gmtkn55_dataset, **filters).run(emt_simulator, "emt")
+        return table.loc[table["status_emt"].str.startswith("skipped"), "reaction"].tolist()
+
+    assert skipped(charges=(0, 0)) == ["IL16:1"]
+    assert skipped(max_unpaired_electrons=0) == ["BH76RC:1", "W4-11:1"]
+    assert skipped(elements={"Cu"}) == ["IL16:1"]
+    benchmark = GMTKN55Benchmark(gmtkn55_dataset, elements=["Cu", "Au"], charges=(-1, 1), max_unpaired_electrons=2)
+    assert benchmark.run_settings() == {"elements": "Au,Cu", "charges": "-1,1", "max_unpaired_electrons": "2"}
+
+
+def test_gmtkn55_reaction_lines_are_read_as_the_evaluator_reads_them() -> None:
+    from matcalc.benchmarks.gmtkn55 import reactions_of
+
+    text = "f=$1\n# a comment\n$tmer {a,b}1/$f c/$f  x -1 -1 2 $w 3.5 0 1 # W4\n"
+    assert reactions_of(text) == [(["a1", "b1", "c"], [-1.0, -1.0, 2.0], 3.5)]
+    with pytest.raises(ValueError, match="added energy"):
+        reactions_of("$tmer a/$f x 1 $w 3.5 2.0 1\n")

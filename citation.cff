@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: >-
   This repository is a fork of MatCalc (materialyzeai/matcalc) by wakamiya0315, reduced to its four
-  benchmarks for machine-learning interatomic potentials, with three tasks of Matbench Discovery and three
-  molecular tasks of MLIPAudit added. If you
+  benchmarks for machine-learning interatomic potentials, with three tasks of Matbench Discovery, three
+  molecular tasks of MLIPAudit and GMTKN55 added. If you
   use it, please cite MatCalc as given below, together with the papers of the benchmark datasets and of the
   models you use.
 title: MatCalc benchmarks (fork of MatCalc)
@@ -10,7 +10,8 @@ abstract: >-
   The Equilibrium, Elasticity, Phonon and Softening benchmarks of MatCalc for machine-learning interatomic
   potentials, with a batched TorchSim simulator, Matbench Discovery's stability, thermal-conductivity and
   diatomic-curve tasks (Discovery, Kappa, Diatomics), and MLIPAudit's noncovalent-interaction,
-  conformer-energy and reactivity tasks on coupled-cluster references (Noncovalent, Conformers, Reactions).
+  conformer-energy and reactivity tasks on coupled-cluster references (Noncovalent, Conformers, Reactions),
+  and the GMTKN55 database of main-group thermochemistry, kinetics and noncovalent interactions.
   Forked from MatCalc at commit b04715d (after v0.5.1).
 type: software
 authors:
@@ -65,6 +66,7 @@ keywords:
   - noncovalent interactions
   - conformers
   - reaction barriers
+  - GMTKN55
 preferred-citation:
   type: software
   title: MatCalc
