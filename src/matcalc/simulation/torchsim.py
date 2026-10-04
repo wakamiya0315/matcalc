@@ -6,7 +6,8 @@ are concatenated into one graph, and batches are sized to fill the GPU memory.
 
 - Relaxations use in-flight batching: when a structure has relaxed it leaves the batch and the next one
   takes its place. The optimizer is TorchSim's ASE-flavoured FIRE on a Frechet cell filter, the same
-  algorithm as ``ASESimulator`` (ASE's FIRE on a ``FrechetCellFilter``).
+  algorithm as ``ASESimulator`` (ASE's FIRE on a ``FrechetCellFilter``); in a fixed cell, the same FIRE
+  on the atoms alone. Atoms fixed by an ASE ``FixAtoms`` constraint get TorchSim's ``FixAtoms``.
 - Single points are packed into batches by size.
 - The batch capacity comes from TorchSim's memory probe (how many copies of the smallest and of the largest
   structure fit on the GPU), turned into an upper bound on the memory of every structure of a call.
@@ -28,9 +29,10 @@ import numpy as np
 import torch
 import torch_sim as ts
 import torch_sim.math as tsm
+from ase.constraints import FixAtoms as AseFixAtoms
 from torch_sim.autobatching import calculate_memory_scalers, determine_max_batch_size, to_constant_volume_bins
-from torch_sim.constraints import FixSymmetry
-from torch_sim.optimizers import fire_init, fire_step
+from torch_sim.constraints import FixAtoms, FixSymmetry
+from torch_sim.optimizers import CellFireState, fire_init, fire_step
 from tqdm import tqdm
 
 from matcalc.structures import to_ase_atoms, to_pmg_structure
@@ -85,7 +87,7 @@ def ase_consistent_fire_step(state: Any, model: ModelInterface, **kwargs: Any) -
        concerned, alpha is enlarged by the same factor before the step and shrunk again afterwards.
 
     Args:
-        state: TorchSim FIRE state (with a cell filter) of the current batch.
+        state: TorchSim FIRE state of the current batch (with a cell filter, or of the atoms alone).
         model: TorchSim model.
         **kwargs: FIRE parameters, passed on to ``torch_sim.optimizers.fire_step``.
 
@@ -105,9 +107,13 @@ def ase_consistent_fire_step(state: Any, model: ModelInterface, **kwargs: Any) -
         state.dt[new_structures] = state.dt[new_structures] / f_dec
 
     # The power P = F . v that decides the step, computed as TorchSim does inside fire_step.
-    power = tsm.batched_vdot(state.deform_grad_forces(), torch.nan_to_num(state.velocities), state.system_idx) + (
-        state.cell_forces * torch.nan_to_num(state.cell_velocities)
-    ).sum(dim=(1, 2))
+    velocities = torch.nan_to_num(state.velocities)
+    if isinstance(state, CellFireState):
+        power = tsm.batched_vdot(state.deform_grad_forces(), velocities, state.system_idx) + (
+            state.cell_forces * torch.nan_to_num(state.cell_velocities)
+        ).sum(dim=(1, 2))
+    else:
+        power = tsm.batched_vdot(state.forces, velocities, state.system_idx)
     shrinking = (state.n_pos > n_min) & (power > 0.0)
     state.alpha[shrinking] = state.alpha[shrinking] / f_alpha
     state = fire_step(state, model, **kwargs)
@@ -116,11 +122,12 @@ def ase_consistent_fire_step(state: Any, model: ModelInterface, **kwargs: Any) -
 
 
 def ase_convergence(fmax: float) -> Callable[..., torch.Tensor]:
-    """Convergence test of ASE's FIRE on a ``FrechetCellFilter``, for a batch of structures.
+    """Convergence test of ASE's FIRE, for a batch of structures.
 
-    ASE stops when every row of the filter's forces is below ``fmax``: the atomic forces transformed by
-    the deformation gradient (``forces @ F``) and the three cell forces. TorchSim's own force criterion
-    uses the untransformed atomic forces, which can stop a relaxation one step earlier or later.
+    On a ``FrechetCellFilter`` ASE stops when every row of the filter's forces is below ``fmax``: the
+    atomic forces transformed by the deformation gradient (``forces @ F``) and the three cell forces.
+    TorchSim's own force criterion uses the untransformed atomic forces, which can stop a relaxation one
+    step earlier or later. In a fixed cell ASE tests the atomic forces (zero on fixed atoms).
 
     Args:
         fmax: Force threshold (eV/Å).
@@ -130,37 +137,70 @@ def ase_convergence(fmax: float) -> Callable[..., torch.Tensor]:
     """
 
     def converged(state: Any, last_energy: torch.Tensor | None = None) -> torch.Tensor:  # noqa: ARG001
-        norms = state.deform_grad_forces().norm(dim=1)
+        relaxing_cell = isinstance(state, CellFireState)
+        norms = (state.deform_grad_forces() if relaxing_cell else state.forces).norm(dim=1)
         atom_max = torch.zeros(state.n_systems, device=state.device, dtype=state.dtype).scatter_reduce(
             0, state.system_idx, norms, reduce="amax"
         )
+        if not relaxing_cell:
+            return atom_max < fmax
         cell_max = state.cell_forces.norm(dim=2).max(dim=1).values
         return (atom_max < fmax) & (cell_max < fmax)
 
     return converged
 
 
-def converged_before_relaxing(structure: Structure | Atoms, start: SinglePointResult, fmax: float) -> bool:
+def converged_before_relaxing(
+    structure: Structure | Atoms, start: SinglePointResult, fmax: float, *, relax_cell: bool = True
+) -> bool:
     """ASE's convergence test before the first FIRE step, when the deformation gradient is the identity.
 
     The cell forces of a Frechet cell filter are then the virial (-volume x stress) divided by the number
-    of atoms.
+    of atoms; in a fixed cell only the atomic forces count.
     ASE takes no step at all for such a structure, whereas TorchSim always takes at least one.
 
     Args:
         structure: The structure.
-        start: Its single point (forces and stress).
+        start: Its single point (forces, zero on fixed atoms, and stress).
         fmax: Force threshold (eV/Å).
+        relax_cell: Whether the relaxation would move the cell.
 
     Returns:
         Whether ASE would stop before the first step.
     """
-    if start.error is not None or start.forces is None or start.stress is None:
+    if start.error is not None or start.forces is None:
         return False
-    atoms = to_ase_atoms(structure)
-    cell_forces = -atoms.get_volume() * np.asarray(start.stress) / len(atoms)
-    largest = max(np.linalg.norm(start.forces, axis=1).max(), np.linalg.norm(cell_forces, axis=1).max())
+    largest = np.linalg.norm(start.forces, axis=1).max()
+    if relax_cell:
+        if start.stress is None:
+            return False
+        atoms = to_ase_atoms(structure)
+        cell_forces = -atoms.get_volume() * np.asarray(start.stress) / len(atoms)
+        largest = max(largest, np.linalg.norm(cell_forces, axis=1).max())
     return bool(largest < fmax)
+
+
+def fixed_atoms(structure: Structure | Atoms) -> list[int]:
+    """Indices of the atoms that an ASE ``FixAtoms`` constraint holds in place.
+
+    The constraints are those of the structure as ASE ``Atoms`` (a pymatgen ``Structure`` gets them from its
+    ``selective_dynamics``), as ``ASESimulator`` sees them.
+
+    Args:
+        structure: The structure.
+
+    Returns:
+        The indices, in increasing order.
+
+    Raises:
+        NotImplementedError: For other ASE constraints, which TorchSim relaxations do not reproduce.
+    """
+    fixed: set[int] = set()
+    for constraint in to_ase_atoms(structure).constraints:
+        if not isinstance(constraint, AseFixAtoms):
+            raise NotImplementedError(f"TorchSimSimulator supports only FixAtoms constraints, not {constraint}")
+        fixed.update(int(i) for i in constraint.get_indices())
+    return sorted(fixed)
 
 
 class BatchedFixSymmetry(FixSymmetry):
@@ -327,17 +367,20 @@ class TorchSimSimulator:
         max_steps: int,
         fix_symmetry: bool = False,
         symprec: float = 0.01,
+        relax_cell: bool = True,
     ) -> list[RelaxResult]:
         """Relax atoms and cell of every structure with FIRE on a Frechet cell filter, in batches.
 
         Args:
-            structures: Structures to relax.
+            structures: Structures to relax. Atoms fixed by an ASE ``FixAtoms`` constraint stay in place.
             fmax: FIRE stops when every force on atoms and cell is below this (eV/Å).
             max_steps: FIRE gives up after this many steps.
             fix_symmetry: Keep the space group of each structure with TorchSim's ``FixSymmetry``
                 constraint (the counterpart of ASE's; needs ``moyopy``), applied to the whole batch at once
                 (``BatchedFixSymmetry``).
             symprec: Symmetry tolerance used to find the space group (Å).
+            relax_cell: Relax the cell as well; with ``False`` FIRE moves only the atoms, in the fixed cell,
+                and no stress is computed.
 
         Returns:
             One ``RelaxResult`` per structure, in input order.
@@ -348,17 +391,28 @@ class TorchSimSimulator:
         cells: list[Structure | Atoms] = (
             [_refined(s, symprec) for s in structures] if fix_symmetry else list(structures)
         )
-        # Like ASE, structures that are already relaxed are not moved at all.
-        starts = self.single_point(cells, compute_stress=True)
+        # Like ASE, structures that are already relaxed are not moved at all. ASE's FIRE sees zero forces
+        # on fixed atoms.
+        starts = [
+            _without_forces_on(fixed_atoms(s), r)
+            for s, r in zip(cells, self.single_point(cells, compute_stress=relax_cell), strict=True)
+        ]
         if fix_symmetry:
             starts = self._symmetrized(cells, starts, symprec)
         todo = [
-            i for i, (s, r) in enumerate(zip(cells, starts, strict=True)) if not converged_before_relaxing(s, r, fmax)
+            i
+            for i, (s, r) in enumerate(zip(cells, starts, strict=True))
+            if not converged_before_relaxing(s, r, fmax, relax_cell=relax_cell)
         ]
         results = [_unmoved(cells[i], starts[i], fmax) for i in range(len(cells))]
         if todo:
             relaxed = self._relax_batched(
-                [cells[i] for i in todo], fmax, max_steps, fix_symmetry=fix_symmetry, symprec=symprec
+                [cells[i] for i in todo],
+                fmax,
+                max_steps,
+                fix_symmetry=fix_symmetry,
+                symprec=symprec,
+                relax_cell=relax_cell,
             )
             for i, result in zip(todo, relaxed, strict=True):
                 results[i] = result
@@ -399,10 +453,14 @@ class TorchSimSimulator:
         *,
         fix_symmetry: bool,
         symprec: float,
+        relax_cell: bool,
     ) -> list[RelaxResult]:
         state = self._state(structures)
         if fix_symmetry:
-            state.constraints = [BatchedFixSymmetry.from_state(state, symprec=symprec, refine_symmetry_state=False)]
+            state.constraints = [
+                *state.constraints,
+                BatchedFixSymmetry.from_state(state, symprec=symprec, refine_symmetry_state=False),
+            ]
 
         def optimize(capacity: float) -> tuple[Any, Any]:
             batcher = ts.InFlightAutoBatcher(
@@ -417,16 +475,16 @@ class TorchSimSimulator:
                 steps_between_swaps=self.steps_between_swaps,
                 autobatcher=batcher,
                 pbar={"desc": "relax"} if self.show_progress else False,
-                init_kwargs={"cell_filter": ts.CellFilter.frechet},
+                init_kwargs={"cell_filter": ts.CellFilter.frechet} if relax_cell else {},
             )
             return final, batcher
 
-        with _stress_enabled(self.model, enabled=True):
+        with _stress_enabled(self.model, enabled=relax_cell):
             final, batcher = self._batched(state, optimize)
         relaxed = ts.io.state_to_structures(final)
         energies = final.energy.detach().cpu().numpy()
         forces = _per_structure(final.forces, final)
-        stresses = final.stress.detach().cpu().numpy()
+        stresses = final.stress.detach().cpu().numpy() if relax_cell else [None] * final.n_systems
         stopped = ase_convergence(fmax)(final).detach().cpu().numpy()
         results = []
         for i, structure in enumerate(relaxed):
@@ -524,12 +582,21 @@ class TorchSimSimulator:
         ]
 
     def _state(self, structures: Sequence[Structure | Atoms]) -> Any:
-        return ts.io.atoms_to_state(
+        """The TorchSim state of the structures, with the atoms of ASE ``FixAtoms`` constraints fixed."""
+        state = ts.io.atoms_to_state(
             [to_ase_atoms(structure) for structure in structures],
             device=self.model.device,
             dtype=self.model.dtype,
             system_extras_map=SYSTEM_EXTRAS,
         )
+        fixed: list[int] = []
+        offset = 0
+        for structure in structures:
+            fixed.extend(offset + i for i in fixed_atoms(structure))
+            offset += len(structure)
+        if fixed:
+            state.constraints = [FixAtoms(atom_idx=torch.tensor(fixed, device=state.device, dtype=torch.long))]
+        return state
 
     def _batched[T](self, state: Any, run: Callable[[float], T]) -> T:
         """Run ``run(capacity)`` on the GPU; after an out-of-memory error, free memory and retry.
@@ -731,6 +798,15 @@ def _free_gpu_memory() -> None:
 def _out_of_memory(exc: BaseException) -> bool:
     # Out-of-memory errors raised inside TorchScript models arrive as plain RuntimeErrors.
     return any(message in str(exc) for message in OUT_OF_MEMORY_MESSAGES)
+
+
+def _without_forces_on(fixed: Sequence[int], result: SinglePointResult) -> SinglePointResult:
+    """The single point with zero forces on the fixed atoms, as ASE's optimizers see them."""
+    if not fixed or result.forces is None:
+        return result
+    forces = np.array(result.forces, copy=True)
+    forces[list(fixed)] = 0.0
+    return replace(result, forces=forces)
 
 
 def _unmoved(structure: Structure | Atoms, start: SinglePointResult, fmax: float) -> RelaxResult:

@@ -65,3 +65,22 @@ def test_failures_are_reported_not_raised(caplog: pytest.LogCaptureFixture) -> N
 def test_as_simulator_accepts_calculators_and_simulators(emt_simulator: ASESimulator) -> None:
     assert as_simulator(emt_simulator) is emt_simulator
     assert isinstance(as_simulator(emt_simulator.calculator), ASESimulator)
+
+
+def test_relax_in_a_fixed_cell_keeps_fixed_atoms_in_place(emt_simulator: ASESimulator) -> None:
+    from ase.build import add_adsorbate, fcc111
+    from ase.constraints import FixAtoms
+
+    slab = fcc111("Cu", size=(2, 2, 3), a=3.62, vacuum=6.0)
+    add_adsorbate(slab, "Cu", 2.2, "fcc")
+    slab.positions += np.random.default_rng(0).normal(0.0, 0.03, slab.positions.shape)
+    fixed = [atom.index for atom in slab if atom.tag == 3]
+    slab.set_constraint(FixAtoms(indices=fixed))
+    (result,) = emt_simulator.relax([slab], fmax=0.01, max_steps=300, relax_cell=False)
+    assert result.converged
+    assert result.optimizer_converged
+    assert result.stress is None
+    np.testing.assert_allclose(result.structure.lattice.matrix, slab.cell[:], atol=1e-12)
+    np.testing.assert_allclose(result.structure.cart_coords[fixed], slab.positions[fixed], atol=1e-12)
+    assert np.abs(result.forces[fixed]).max() == 0.0  # FIRE sees no force on fixed atoms
+    assert len(slab.constraints) == 1  # the caller's structure is untouched

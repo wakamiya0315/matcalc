@@ -1,0 +1,5003 @@
+{
+ "description": "Reaction energies of molecules adsorbing on metal and oxide surfaces, against experiment: ADS41 (Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I) and Surf13 (Shi et al., Nat. Chem. 17, 1688 (2025)). Built by scripts/build_adsorption_dataset.py; energies in eV, lengths in Å.",
+ "crystals": {
+  "Ag": {
+   "lattice": "fcc",
+   "symbols": [
+    "Ag"
+   ],
+   "a": 4.086
+  },
+  "Au": {
+   "lattice": "fcc",
+   "symbols": [
+    "Au"
+   ],
+   "a": 4.078
+  },
+  "Cu": {
+   "lattice": "fcc",
+   "symbols": [
+    "Cu"
+   ],
+   "a": 3.615
+  },
+  "Ir": {
+   "lattice": "fcc",
+   "symbols": [
+    "Ir"
+   ],
+   "a": 3.839
+  },
+  "Ni": {
+   "lattice": "fcc",
+   "symbols": [
+    "Ni"
+   ],
+   "a": 3.524
+  },
+  "Pd": {
+   "lattice": "fcc",
+   "symbols": [
+    "Pd"
+   ],
+   "a": 3.891
+  },
+  "Pt": {
+   "lattice": "fcc",
+   "symbols": [
+    "Pt"
+   ],
+   "a": 3.924
+  },
+  "Rh": {
+   "lattice": "fcc",
+   "symbols": [
+    "Rh"
+   ],
+   "a": 3.803
+  },
+  "Co": {
+   "lattice": "hcp",
+   "symbols": [
+    "Co"
+   ],
+   "a": 2.507,
+   "c": 4.069
+  },
+  "Ru": {
+   "lattice": "hcp",
+   "symbols": [
+    "Ru"
+   ],
+   "a": 2.706,
+   "c": 4.282
+  },
+  "MgO": {
+   "lattice": "rocksalt",
+   "symbols": [
+    "Mg",
+    "O"
+   ],
+   "a": 4.214
+  },
+  "TiO2 (rutile)": {
+   "lattice": "rutile",
+   "symbols": [
+    "Ti",
+    "O"
+   ],
+   "a": 4.587,
+   "c": 2.954,
+   "u": 0.3048
+  },
+  "TiO2 (anatase)": {
+   "lattice": "anatase",
+   "symbols": [
+    "Ti",
+    "O"
+   ],
+   "a": 3.782,
+   "c": 9.502,
+   "u": 0.2081
+  }
+ },
+ "slabs": {
+  "Pt(111) 2x2": {
+   "crystal": "Pt",
+   "facet": "111",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Pt(111) 3x2": {
+   "crystal": "Pt",
+   "facet": "111",
+   "size": [
+    3,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Pt(111) 3x3": {
+   "crystal": "Pt",
+   "facet": "111",
+   "size": [
+    3,
+    3
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Pt(111) 4x4": {
+   "crystal": "Pt",
+   "facet": "111",
+   "size": [
+    4,
+    4
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Pt(111) 3x3 5 layers": {
+   "crystal": "Pt",
+   "facet": "111",
+   "size": [
+    3,
+    3
+   ],
+   "layers": 5,
+   "fixed_layers": 1
+  },
+  "Pd(111) 2x2": {
+   "crystal": "Pd",
+   "facet": "111",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Pd(100) 2x2": {
+   "crystal": "Pd",
+   "facet": "100",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Ni(111) 2x2": {
+   "crystal": "Ni",
+   "facet": "111",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Ni(100) 2x2": {
+   "crystal": "Ni",
+   "facet": "100",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Rh(111) 2x2": {
+   "crystal": "Rh",
+   "facet": "111",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Rh(100) 2x2": {
+   "crystal": "Rh",
+   "facet": "100",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Ir(111) 2x2": {
+   "crystal": "Ir",
+   "facet": "111",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Cu(111) 2x2": {
+   "crystal": "Cu",
+   "facet": "111",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Cu(111) 3x3": {
+   "crystal": "Cu",
+   "facet": "111",
+   "size": [
+    3,
+    3
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Cu(100) 2x2": {
+   "crystal": "Cu",
+   "facet": "100",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Ag(111) 3x3": {
+   "crystal": "Ag",
+   "facet": "111",
+   "size": [
+    3,
+    3
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Au(111) 3x3": {
+   "crystal": "Au",
+   "facet": "111",
+   "size": [
+    3,
+    3
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Co(0001) 2x2": {
+   "crystal": "Co",
+   "facet": "0001",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "Ru(0001) 2x2": {
+   "crystal": "Ru",
+   "facet": "0001",
+   "size": [
+    2,
+    2
+   ],
+   "layers": 4,
+   "fixed_layers": 2
+  },
+  "MgO(001) 2x2": {
+   "crystal": "MgO",
+   "in_plane": [
+    [
+     1,
+     0,
+     0
+    ],
+    [
+     0,
+     1,
+     0
+    ]
+   ],
+   "stacking": [
+    0,
+    0,
+    1
+   ],
+   "size": [
+    2,
+    2
+   ],
+   "layers": 2,
+   "fixed_layers": 1,
+   "note": "a layer is a conventional cell (two atomic layers): four atomic layers, the bottom two fixed"
+  },
+  "TiO2 rutile(110) p(4x2)": {
+   "crystal": "TiO2 (rutile)",
+   "in_plane": [
+    [
+     -1,
+     1,
+     0
+    ],
+    [
+     0,
+     0,
+     1
+    ]
+   ],
+   "stacking": [
+    0,
+    1,
+    0
+   ],
+   "size": [
+    2,
+    4
+   ],
+   "layers": 5,
+   "fixed_layers": 3,
+   "note": "a layer is an O-Ti-O trilayer; x along [-110], y along [001] (the rows of five-fold Ti)"
+  },
+  "TiO2 anatase(101) 3x1": {
+   "crystal": "TiO2 (anatase)",
+   "in_plane": [
+    [
+     1,
+     0,
+     -1
+    ],
+    [
+     0,
+     1,
+     0
+    ]
+   ],
+   "stacking": [
+    0,
+    0,
+    1
+   ],
+   "size": [
+    1,
+    3
+   ],
+   "layers": 4,
+   "fixed_layers": 1,
+   "note": "a layer is an O-Ti-O block (12 atoms per surface cell); x along [10-1], y along [010]"
+  }
+ },
+ "molecules": {
+  "H2": {
+   "symbols": [
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.3686
+    ],
+    [
+     0.0,
+     0.0,
+     -0.3686
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "O2": {
+   "symbols": [
+    "O",
+    "O"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.623
+    ],
+    [
+     0.0,
+     0.0,
+     -0.623
+    ]
+   ],
+   "multiplicity": 3
+  },
+  "I2": {
+   "symbols": [
+    "I",
+    "I"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     -1.333
+    ],
+    [
+     0.0,
+     0.0,
+     1.333
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "CO": {
+   "symbols": [
+    "O",
+    "C"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.5752
+    ],
+    [
+     0.0,
+     0.0,
+     -0.5752
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "NO": {
+   "symbols": [
+    "N",
+    "O"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     -0.5714
+    ],
+    [
+     0.0,
+     0.0,
+     0.5714
+    ]
+   ],
+   "multiplicity": 2
+  },
+  "CO2": {
+   "symbols": [
+    "C",
+    "O",
+    "O"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.1787
+    ],
+    [
+     0.0,
+     0.0,
+     -1.1787
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "N2O": {
+   "symbols": [
+    "N",
+    "N",
+    "O"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     -1.1781
+    ],
+    [
+     0.0,
+     0.0,
+     -0.007
+    ],
+    [
+     0.0,
+     0.0,
+     1.1851
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "H2O": {
+   "symbols": [
+    "O",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.3975
+    ],
+    [
+     0.0,
+     0.7632,
+     -0.1988
+    ],
+    [
+     0.0,
+     -0.7632,
+     -0.1988
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "NH3": {
+   "symbols": [
+    "N",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     -0.0,
+     0.2912
+    ],
+    [
+     0.0,
+     0.9397,
+     -0.0971
+    ],
+    [
+     0.8138,
+     -0.4699,
+     -0.0971
+    ],
+    [
+     -0.8138,
+     -0.4699,
+     -0.0971
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "CH4": {
+   "symbols": [
+    "C",
+    "H",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.6291,
+     0.6291,
+     0.6291
+    ],
+    [
+     -0.6291,
+     -0.6291,
+     0.6291
+    ],
+    [
+     0.6291,
+     -0.6291,
+     -0.6291
+    ],
+    [
+     -0.6291,
+     0.6291,
+     -0.6291
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "CH3OH": {
+   "symbols": [
+    "C",
+    "O",
+    "H",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     -0.1414,
+     0.3331,
+     0.0
+    ],
+    [
+     -0.1414,
+     -1.0899,
+     0.0
+    ],
+    [
+     -1.1873,
+     0.6385,
+     0.0
+    ],
+    [
+     0.7843,
+     -1.3798,
+     0.0
+    ],
+    [
+     0.3429,
+     0.7491,
+     0.8918
+    ],
+    [
+     0.3429,
+     0.7491,
+     -0.8918
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "CH3I": {
+   "symbols": [
+    "C",
+    "I",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     -0.0,
+     0.0,
+     0.2293
+    ],
+    [
+     -0.0,
+     0.0,
+     -1.9067
+    ],
+    [
+     0.0,
+     -1.0336,
+     0.5592
+    ],
+    [
+     0.8952,
+     0.5168,
+     0.5592
+    ],
+    [
+     -0.8952,
+     0.5168,
+     0.5592
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "CH2I2": {
+   "symbols": [
+    "C",
+    "I",
+    "I",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.2209
+    ],
+    [
+     1.7802,
+     0.0,
+     -0.9358
+    ],
+    [
+     -1.7802,
+     0.0,
+     -0.9358
+    ],
+    [
+     0.0,
+     0.8926,
+     0.8253
+    ],
+    [
+     0.0,
+     -0.8926,
+     0.8253
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "C2H4": {
+   "symbols": [
+    "C",
+    "C",
+    "H",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.6675
+    ],
+    [
+     0.0,
+     0.0,
+     -0.6675
+    ],
+    [
+     0.0,
+     0.9228,
+     1.2377
+    ],
+    [
+     0.0,
+     -0.9228,
+     1.2377
+    ],
+    [
+     0.0,
+     0.9228,
+     -1.2377
+    ],
+    [
+     0.0,
+     -0.9228,
+     -1.2377
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "C2H6": {
+   "symbols": [
+    "C",
+    "C",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.7622
+    ],
+    [
+     0.0,
+     0.0,
+     -0.7622
+    ],
+    [
+     0.0,
+     1.019,
+     1.1572
+    ],
+    [
+     -0.8824,
+     -0.5095,
+     1.1572
+    ],
+    [
+     0.8824,
+     -0.5095,
+     1.1572
+    ],
+    [
+     0.0,
+     -1.019,
+     -1.1572
+    ],
+    [
+     -0.8824,
+     0.5095,
+     -1.1572
+    ],
+    [
+     0.8824,
+     0.5095,
+     -1.1572
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "C3H8": {
+   "symbols": [
+    "C",
+    "C",
+    "C",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.0,
+     0.6183
+    ],
+    [
+     0.0,
+     1.2669,
+     -0.2296
+    ],
+    [
+     0.0,
+     -1.2669,
+     -0.2296
+    ],
+    [
+     -0.8769,
+     0.0,
+     1.2753
+    ],
+    [
+     0.8769,
+     0.0,
+     1.2753
+    ],
+    [
+     0.0,
+     2.1662,
+     0.3927
+    ],
+    [
+     0.0,
+     -2.1662,
+     0.3927
+    ],
+    [
+     0.8836,
+     1.3042,
+     -0.8738
+    ],
+    [
+     -0.8836,
+     1.3042,
+     -0.8738
+    ],
+    [
+     -0.8836,
+     -1.3042,
+     -0.8738
+    ],
+    [
+     0.8836,
+     -1.3042,
+     -0.8738
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "C4H10": {
+   "symbols": [
+    "C",
+    "C",
+    "C",
+    "C",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.7026,
+     1.8209,
+     0.0
+    ],
+    [
+     0.7026,
+     0.2963,
+     0.0
+    ],
+    [
+     -0.7026,
+     -0.2963,
+     0.0
+    ],
+    [
+     -0.7026,
+     -1.8209,
+     0.0
+    ],
+    [
+     1.7198,
+     2.2223,
+     0.0
+    ],
+    [
+     -1.7198,
+     -2.2223,
+     0.0
+    ],
+    [
+     0.1882,
+     2.2104,
+     0.8836
+    ],
+    [
+     0.1882,
+     2.2104,
+     -0.8836
+    ],
+    [
+     -0.1882,
+     -2.2104,
+     0.8836
+    ],
+    [
+     -0.1882,
+     -2.2104,
+     -0.8836
+    ],
+    [
+     1.2477,
+     -0.0727,
+     -0.8776
+    ],
+    [
+     1.2477,
+     -0.0727,
+     0.8776
+    ],
+    [
+     -1.2477,
+     0.0727,
+     -0.8776
+    ],
+    [
+     -1.2477,
+     0.0727,
+     0.8776
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "C6H6": {
+   "symbols": [
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     1.3952,
+     0.0
+    ],
+    [
+     1.2083,
+     0.6976,
+     0.0
+    ],
+    [
+     1.2083,
+     -0.6976,
+     0.0
+    ],
+    [
+     0.0,
+     -1.3952,
+     0.0
+    ],
+    [
+     -1.2083,
+     -0.6976,
+     0.0
+    ],
+    [
+     -1.2083,
+     0.6976,
+     0.0
+    ],
+    [
+     0.0,
+     2.4824,
+     0.0
+    ],
+    [
+     2.1498,
+     1.2412,
+     0.0
+    ],
+    [
+     2.1498,
+     -1.2412,
+     0.0
+    ],
+    [
+     0.0,
+     -2.4824,
+     0.0
+    ],
+    [
+     -2.1498,
+     -1.2412,
+     0.0
+    ],
+    [
+     -2.1498,
+     1.2412,
+     0.0
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "C6H10": {
+   "symbols": [
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.8351,
+     1.1725,
+     0.6078
+    ],
+    [
+     -0.4394,
+     1.4668,
+     0.3111
+    ],
+    [
+     -1.4,
+     0.4666,
+     -0.2634
+    ],
+    [
+     -0.8922,
+     -0.9747,
+     -0.1712
+    ],
+    [
+     0.586,
+     -1.0679,
+     -0.5399
+    ],
+    [
+     1.4433,
+     -0.178,
+     0.3639
+    ],
+    [
+     1.4759,
+     1.9356,
+     1.0424
+    ],
+    [
+     -0.8154,
+     2.4708,
+     0.4916
+    ],
+    [
+     -2.3599,
+     0.5407,
+     0.2602
+    ],
+    [
+     -1.5846,
+     0.7279,
+     -1.3122
+    ],
+    [
+     -1.0343,
+     -1.3487,
+     0.8509
+    ],
+    [
+     -1.4865,
+     -1.6179,
+     -0.83
+    ],
+    [
+     0.7178,
+     -0.763,
+     -1.586
+    ],
+    [
+     0.9283,
+     -2.1064,
+     -0.4665
+    ],
+    [
+     2.4326,
+     -0.0553,
+     -0.0913
+    ],
+    [
+     1.5934,
+     -0.6692,
+     1.3327
+    ]
+   ],
+   "multiplicity": 1
+  },
+  "C10H8": {
+   "symbols": [
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "C",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H",
+    "H"
+   ],
+   "positions": [
+    [
+     0.0,
+     0.7,
+     0.0
+    ],
+    [
+     0.0,
+     -0.7,
+     0.0
+    ],
+    [
+     -1.2124,
+     1.4,
+     0.0
+    ],
+    [
+     -2.4249,
+     0.7,
+     0.0
+    ],
+    [
+     -2.4249,
+     -0.7,
+     0.0
+    ],
+    [
+     -1.2124,
+     -1.4,
+     0.0
+    ],
+    [
+     1.2124,
+     1.4,
+     0.0
+    ],
+    [
+     2.4249,
+     0.7,
+     0.0
+    ],
+    [
+     2.4249,
+     -0.7,
+     0.0
+    ],
+    [
+     1.2124,
+     -1.4,
+     0.0
+    ],
+    [
+     -1.2124,
+     2.48,
+     0.0
+    ],
+    [
+     -3.3602,
+     1.24,
+     0.0
+    ],
+    [
+     -3.3602,
+     -1.24,
+     0.0
+    ],
+    [
+     -1.2124,
+     -2.48,
+     0.0
+    ],
+    [
+     1.2124,
+     2.48,
+     0.0
+    ],
+    [
+     3.3602,
+     1.24,
+     0.0
+    ],
+    [
+     3.3602,
+     -1.24,
+     0.0
+    ],
+    [
+     1.2124,
+     -2.48,
+     0.0
+    ]
+   ],
+   "multiplicity": 1
+  }
+ },
+ "adsorbed": {
+  "CO/Co(0001) ontop": {
+   "slab": "Co(0001) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.75
+      ],
+      [
+       0.0,
+       0.0,
+       2.92
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Co 1.75 Å."
+  },
+  "CO/Cu(111) ontop": {
+   "slab": "Cu(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.85
+      ],
+      [
+       0.0,
+       0.0,
+       3.02
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Cu 1.85 Å."
+  },
+  "CO/Ir(111) ontop": {
+   "slab": "Ir(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.86
+      ],
+      [
+       0.0,
+       0.0,
+       3.03
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Ir 1.86 Å."
+  },
+  "CO/Ni(111) fcc": {
+   "slab": "Ni(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.3163
+      ],
+      [
+       0.0,
+       0.0,
+       2.4863
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Ni 1.95 Å."
+  },
+  "CO/Pd(100) bridge": {
+   "slab": "Pd(100) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "bridge"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.424
+      ],
+      [
+       0.0,
+       0.0,
+       2.594
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on the bridge site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Pd 1.98 Å."
+  },
+  "CO/Pd(111) fcc": {
+   "slab": "Pd(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.3272
+      ],
+      [
+       0.0,
+       0.0,
+       2.4972
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Pd 2.07 Å."
+  },
+  "CO/Pt(111) ontop": {
+   "slab": "Pt(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.85
+      ],
+      [
+       0.0,
+       0.0,
+       3.02
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Pt 1.85 Å."
+  },
+  "CO/Rh(111) ontop": {
+   "slab": "Rh(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.83
+      ],
+      [
+       0.0,
+       0.0,
+       3.0
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Rh 1.83 Å."
+  },
+  "CO/Ru(0001) ontop": {
+   "slab": "Ru(0001) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.92
+      ],
+      [
+       0.0,
+       0.0,
+       3.09
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Ru 1.92 Å."
+  },
+  "NO/Pd(100) hollow": {
+   "slab": "Pd(100) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "hollow"
+     },
+     "symbols": [
+      "N",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       0.9152
+      ],
+      [
+       0.0,
+       0.0,
+       2.1152
+      ]
+     ]
+    }
+   ],
+   "configuration": "NO upright on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, systems 11-13; Araujo et al. Table 3); N-Pd 2.15 Å."
+  },
+  "NO/Pd(111) fcc": {
+   "slab": "Pd(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "N",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.2958
+      ],
+      [
+       0.0,
+       0.0,
+       2.4958
+      ]
+     ]
+    }
+   ],
+   "configuration": "NO upright on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, systems 11-13; Araujo et al. Table 3); N-Pd 2.05 Å."
+  },
+  "NO/Pt(111) fcc": {
+   "slab": "Pt(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "N",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.311
+      ],
+      [
+       0.0,
+       0.0,
+       2.511
+      ]
+     ]
+    }
+   ],
+   "configuration": "NO upright on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, systems 11-13; Araujo et al. Table 3); N-Pt 2.07 Å."
+  },
+  "H/Ni(100) hollow 2x2": {
+   "slab": "Ni(100) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "hollow"
+     },
+     "symbols": [
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       0.5638
+      ]
+     ]
+    }
+   ],
+   "configuration": "H on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); H-Ni 1.85 Å."
+  },
+  "H/Ni(111) fcc 2x2": {
+   "slab": "Ni(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       0.9243
+      ]
+     ]
+    }
+   ],
+   "configuration": "H on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); H-Ni 1.71 Å."
+  },
+  "H/Pd(111) fcc 2x2": {
+   "slab": "Pd(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       0.8466
+      ]
+     ]
+    }
+   ],
+   "configuration": "H on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); H-Pd 1.80 Å."
+  },
+  "H/Pt(111) fcc 2x2": {
+   "slab": "Pt(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       0.9451
+      ]
+     ]
+    }
+   ],
+   "configuration": "H on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); Araujo et al. list the top site, but Fig. S1 (system 18) shows H in a three-fold hollow; H-Pt 1.86 Å."
+  },
+  "H/Rh(111) fcc 2x2": {
+   "slab": "Rh(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.006
+      ]
+     ]
+    }
+   ],
+   "configuration": "H on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); H-Rh 1.85 Å."
+  },
+  "I/Pt(111) fcc 2x2": {
+   "slab": "Pt(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "I"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.2352
+      ]
+     ]
+    }
+   ],
+   "configuration": "I on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); I-Pt 2.75 Å."
+  },
+  "N/Ni(100) hollow 2x2": {
+   "slab": "Ni(100) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "hollow"
+     },
+     "symbols": [
+      "N"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       0.5638
+      ]
+     ]
+    }
+   ],
+   "configuration": "N on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); N-Ni 1.85 Å."
+  },
+  "O/Ni(100) hollow 2x2": {
+   "slab": "Ni(100) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "hollow"
+     },
+     "symbols": [
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       0.8585
+      ]
+     ]
+    }
+   ],
+   "configuration": "O on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); O-Ni 1.96 Å."
+  },
+  "O/Ni(111) fcc 2x2": {
+   "slab": "Ni(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.1789
+      ]
+     ]
+    }
+   ],
+   "configuration": "O on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); O-Ni 1.86 Å."
+  },
+  "O/Pt(111) fcc 3x3": {
+   "slab": "Pt(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.2791
+      ]
+     ]
+    }
+   ],
+   "configuration": "O on the fcc site at 1/9 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); O-Pt 2.05 Å."
+  },
+  "O/Rh(100) hollow 2x2": {
+   "slab": "Rh(100) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "hollow"
+     },
+     "symbols": [
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       0.843
+      ]
+     ]
+    }
+   ],
+   "configuration": "O on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); O-Rh 2.08 Å."
+  },
+  "H/Pt(111) fcc 3x3": {
+   "slab": "Pt(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       0.9451
+      ]
+     ]
+    }
+   ],
+   "configuration": "H on the fcc site at 1/9 ML, the 3x3 slab of the ethylene dissociation (Sharada et al. (2019) Appendix A)."
+  },
+  "CCH3/Pt(111) fcc 3x3": {
+   "slab": "Pt(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.1974
+      ],
+      [
+       0.0,
+       0.0,
+       2.6974
+      ],
+      [
+       0.0,
+       -1.0275,
+       3.0612
+      ],
+      [
+       0.8898,
+       0.5137,
+       3.0612
+      ],
+      [
+       -0.8898,
+       0.5137,
+       3.0612
+      ]
+     ]
+    }
+   ],
+   "configuration": "Ethylidyne on the fcc site at 1/9 ML, C-C along the normal (Sharada et al. Appendix A: 3x3 slab); C-Pt 2.00 Å, C-C 1.50 Å."
+  },
+  "CH/Pt(111) fcc 4x4": {
+   "slab": "Pt(111) 4x4",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "C",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.2305
+      ],
+      [
+       0.0,
+       0.0,
+       2.3205
+      ]
+     ]
+    }
+   ],
+   "configuration": "Methylidyne on the fcc site at 1/16 ML (Araujo et al., to mimic the low coverage of the experiment; CE39 used 1/4 ML); C-Pt 2.02 Å."
+  },
+  "CH3/Pt(111) ontop 4x4": {
+   "slab": "Pt(111) 4x4",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.08
+      ],
+      [
+       0.0,
+       -1.0275,
+       2.4438
+      ],
+      [
+       0.8898,
+       0.5137,
+       2.4438
+      ],
+      [
+       -0.8898,
+       0.5137,
+       2.4438
+      ]
+     ]
+    }
+   ],
+   "configuration": "Methyl on the top site (Wellendorff et al. (2015) SI Fig. S1, system 27) at 1/16 ML (Araujo et al.; CE39 used 1/4 ML); C-Pt 2.08 Å."
+  },
+  "CH3I/Pt(111) ontop": {
+   "slab": "Pt(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "I",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       4.936
+      ],
+      [
+       0.0,
+       0.0,
+       2.8
+      ],
+      [
+       0.0,
+       -1.0336,
+       5.2659
+      ],
+      [
+       0.8952,
+       0.5168,
+       5.2659
+      ],
+      [
+       -0.8952,
+       0.5168,
+       5.2659
+      ]
+     ]
+    }
+   ],
+   "configuration": "CH3I standing on I on the top site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, system 25); I-Pt 2.80 Å."
+  },
+  "CH3OH/Pt(111) ontop": {
+   "slab": "Pt(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "O",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       -1.0062,
+       0.0,
+       3.4062
+      ],
+      [
+       0.0,
+       0.0,
+       2.4
+      ],
+      [
+       -1.9617,
+       0.0,
+       2.8826
+      ],
+      [
+       0.8595,
+       0.0,
+       2.8495
+      ],
+      [
+       -0.9579,
+       -0.8918,
+       4.0428
+      ],
+      [
+       -0.9579,
+       0.8918,
+       4.0428
+      ]
+     ]
+    }
+   ],
+   "configuration": "CH3OH bound through O on the top site at 1/4 ML, C-O tilted 45° from the normal and the hydroxyl H near the surface plane (Wellendorff et al. (2015) SI Fig. S1, system 26); O-Pt 2.40 Å."
+  },
+  "CH4/Pt(111) fcc": {
+   "slab": "Pt(111) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "C",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.9632
+      ],
+      [
+       0.0,
+       0.0,
+       4.0529
+      ],
+      [
+       0.0,
+       1.0273,
+       2.6
+      ],
+      [
+       -0.8897,
+       -0.5137,
+       2.6
+      ],
+      [
+       0.8897,
+       -0.5137,
+       2.6
+      ]
+     ]
+    }
+   ],
+   "configuration": "CH4 over the fcc site at 1/4 ML with three H down (tripod, Wellendorff et al. (2015) SI Fig. S1 system 28; site: Araujo et al. Table 3); the lower H 2.60 Å above the top layer."
+  },
+  "NH3/Cu(100) ontop": {
+   "slab": "Cu(100) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "N",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.1
+      ],
+      [
+       0.9457,
+       0.0,
+       2.4821
+      ],
+      [
+       -0.4729,
+       0.819,
+       2.4821
+      ],
+      [
+       -0.4729,
+       -0.819,
+       2.4821
+      ]
+     ]
+    }
+   ],
+   "configuration": "NH3 bound through N on the top site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, system 24); N-Cu 2.10 Å."
+  },
+  "C2H6/Pt(111) fcc": {
+   "slab": "Pt(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       -0.6601,
+       0.3811,
+       3.519
+      ],
+      [
+       0.6601,
+       -0.3811,
+       3.519
+      ],
+      [
+       -1.0022,
+       0.5786,
+       2.5
+      ],
+      [
+       -1.4434,
+       -0.1856,
+       4.0284
+      ],
+      [
+       -0.561,
+       1.3428,
+       4.0284
+      ],
+      [
+       1.0022,
+       -0.5786,
+       4.5379
+      ],
+      [
+       0.561,
+       -1.3428,
+       3.0095
+      ],
+      [
+       1.4434,
+       0.1856,
+       3.0095
+      ]
+     ]
+    }
+   ],
+   "configuration": "Ethane at 1/9 ML with its C-C axis parallel to the surface along [2a1 - a2] (as in Wellendorff et al. (2015) SI Fig. S1, system 29), the C-C midpoint over the fcc site (Araujo et al. Table 3); the lowest H 2.50 Å above the top layer."
+  },
+  "C3H8/Pt(111) ontop": {
+   "slab": "Pt(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.5653,
+       3.3836
+      ],
+      [
+       -1.2669,
+       -0.2826,
+       3.3836
+      ],
+      [
+       1.2669,
+       -0.2826,
+       3.3836
+      ],
+      [
+       0.0,
+       1.2223,
+       4.2605
+      ],
+      [
+       0.0,
+       1.2223,
+       2.5067
+      ],
+      [
+       -2.1662,
+       0.3396,
+       3.3836
+      ],
+      [
+       2.1662,
+       0.3396,
+       3.3836
+      ],
+      [
+       -1.3042,
+       -0.9269,
+       2.5
+      ],
+      [
+       -1.3042,
+       -0.9269,
+       4.2672
+      ],
+      [
+       1.3042,
+       -0.9269,
+       4.2672
+      ],
+      [
+       1.3042,
+       -0.9269,
+       2.5
+      ]
+     ]
+    }
+   ],
+   "configuration": "All-trans C3H8 at 1/9 ML lying flat, its carbon plane parallel to the surface and the chain along a close-packed row (as in Wellendorff et al. (2015) SI Fig. S1, systems 30-31), the carbon centroid over a top site (Araujo et al. Table 3); the lowest H 2.50 Å above the top layer."
+  },
+  "C4H10/Pt(111) ontop": {
+   "slab": "Pt(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       -1.9517,
+       0.0,
+       3.3836
+      ],
+      [
+       -0.5294,
+       0.5488,
+       3.3836
+      ],
+      [
+       0.5294,
+       -0.5488,
+       3.3836
+      ],
+      [
+       1.9517,
+       -0.0,
+       3.3836
+      ],
+      [
+       -2.6925,
+       0.8045,
+       3.3836
+      ],
+      [
+       2.6925,
+       -0.8045,
+       3.3836
+      ],
+      [
+       -2.1299,
+       -0.6201,
+       4.2672
+      ],
+      [
+       -2.1299,
+       -0.6201,
+       2.5
+      ],
+      [
+       2.1299,
+       0.6201,
+       4.2672
+      ],
+      [
+       2.1299,
+       0.6201,
+       2.5
+      ],
+      [
+       -0.3814,
+       1.1902,
+       2.506
+      ],
+      [
+       -0.3814,
+       1.1902,
+       4.2612
+      ],
+      [
+       0.3814,
+       -1.1902,
+       2.506
+      ],
+      [
+       0.3814,
+       -1.1902,
+       4.2612
+      ]
+     ]
+    }
+   ],
+   "configuration": "All-trans C4H10 at 1/9 ML lying flat, its carbon plane parallel to the surface and the chain along a close-packed row (as in Wellendorff et al. (2015) SI Fig. S1, systems 30-31), the carbon centroid over a top site (Araujo et al. Table 3); the lowest H 2.50 Å above the top layer."
+  },
+  "C6H6/Cu(111) fcc": {
+   "slab": "Cu(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       1.3952,
+       3.0
+      ],
+      [
+       -1.2083,
+       0.6976,
+       3.0
+      ],
+      [
+       -1.2083,
+       -0.6976,
+       3.0
+      ],
+      [
+       0.0,
+       -1.3952,
+       3.0
+      ],
+      [
+       1.2083,
+       -0.6976,
+       3.0
+      ],
+      [
+       1.2083,
+       0.6976,
+       3.0
+      ],
+      [
+       0.0,
+       2.4824,
+       3.0
+      ],
+      [
+       -2.1498,
+       1.2412,
+       3.0
+      ],
+      [
+       -2.1498,
+       -1.2412,
+       3.0
+      ],
+      [
+       0.0,
+       -2.4824,
+       3.0
+      ],
+      [
+       2.1498,
+       -1.2412,
+       3.0
+      ],
+      [
+       2.1498,
+       1.2412,
+       3.0
+      ]
+     ]
+    }
+   ],
+   "configuration": "Benzene at 1/9 ML lying flat over the fcc site, two C-H bonds along y (Wellendorff et al. (2015) SI Fig. S1, systems 33-35; site: Araujo et al. Table 3); the ring 3.0 Å above the top layer."
+  },
+  "C6H6/Ag(111) fcc": {
+   "slab": "Ag(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       1.3952,
+       3.1
+      ],
+      [
+       -1.2083,
+       0.6976,
+       3.1
+      ],
+      [
+       -1.2083,
+       -0.6976,
+       3.1
+      ],
+      [
+       0.0,
+       -1.3952,
+       3.1
+      ],
+      [
+       1.2083,
+       -0.6976,
+       3.1
+      ],
+      [
+       1.2083,
+       0.6976,
+       3.1
+      ],
+      [
+       0.0,
+       2.4824,
+       3.1
+      ],
+      [
+       -2.1498,
+       1.2412,
+       3.1
+      ],
+      [
+       -2.1498,
+       -1.2412,
+       3.1
+      ],
+      [
+       0.0,
+       -2.4824,
+       3.1
+      ],
+      [
+       2.1498,
+       -1.2412,
+       3.1
+      ],
+      [
+       2.1498,
+       1.2412,
+       3.1
+      ]
+     ]
+    }
+   ],
+   "configuration": "Benzene at 1/9 ML lying flat over the fcc site, two C-H bonds along y (Wellendorff et al. (2015) SI Fig. S1, systems 33-35; site: Araujo et al. Table 3); the ring 3.1 Å above the top layer."
+  },
+  "C6H6/Au(111) fcc": {
+   "slab": "Au(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       1.3952,
+       3.1
+      ],
+      [
+       -1.2083,
+       0.6976,
+       3.1
+      ],
+      [
+       -1.2083,
+       -0.6976,
+       3.1
+      ],
+      [
+       0.0,
+       -1.3952,
+       3.1
+      ],
+      [
+       1.2083,
+       -0.6976,
+       3.1
+      ],
+      [
+       1.2083,
+       0.6976,
+       3.1
+      ],
+      [
+       0.0,
+       2.4824,
+       3.1
+      ],
+      [
+       -2.1498,
+       1.2412,
+       3.1
+      ],
+      [
+       -2.1498,
+       -1.2412,
+       3.1
+      ],
+      [
+       0.0,
+       -2.4824,
+       3.1
+      ],
+      [
+       2.1498,
+       -1.2412,
+       3.1
+      ],
+      [
+       2.1498,
+       1.2412,
+       3.1
+      ]
+     ]
+    }
+   ],
+   "configuration": "Benzene at 1/9 ML lying flat over the fcc site, two C-H bonds along y (Wellendorff et al. (2015) SI Fig. S1, systems 33-35; site: Araujo et al. Table 3); the ring 3.1 Å above the top layer."
+  },
+  "C6H6/Pt(111) bridge": {
+   "slab": "Pt(111) 3x3 5 layers",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "bridge"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       -0.1011,
+       1.4872,
+       2.0639
+      ],
+      [
+       1.1379,
+       0.6903,
+       2.1001
+      ],
+      [
+       1.1433,
+       -0.7448,
+       2.0978
+      ],
+      [
+       -0.0925,
+       -1.549,
+       2.0613
+      ],
+      [
+       -1.3317,
+       -0.7513,
+       2.094
+      ],
+      [
+       -1.3354,
+       0.6836,
+       2.0976
+      ],
+      [
+       -2.2531,
+       1.191,
+       2.4018
+      ],
+      [
+       -0.0915,
+       -2.4482,
+       2.6876
+      ],
+      [
+       -0.1051,
+       2.3892,
+       2.6864
+      ],
+      [
+       2.0503,
+       1.2041,
+       2.4082
+      ],
+      [
+       2.0585,
+       -1.2517,
+       2.4095
+      ],
+      [
+       -2.2459,
+       -1.2642,
+       2.3991
+      ]
+     ]
+    }
+   ],
+   "configuration": "Benzene at 1/9 ML chemisorbed over the bridge site, in the geometry relaxed by Araujo et al. (2022) on a five-layer slab with four relaxed layers (their SI Supplementary Note 1; CE39 used a flat benzene on a four-layer slab)."
+  },
+  "C6H10/Pt(111) bridge": {
+   "slab": "Pt(111) 3x3 5 layers",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "bridge"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       -0.6706,
+       0.0,
+       2.0
+      ],
+      [
+       0.6706,
+       0.0,
+       2.0
+      ],
+      [
+       1.491,
+       0.7945,
+       2.9741
+      ],
+      [
+       0.6719,
+       1.3318,
+       4.1506
+      ],
+      [
+       -0.6716,
+       1.8867,
+       3.685
+      ],
+      [
+       -1.4909,
+       0.8214,
+       2.9516
+      ],
+      [
+       -1.289,
+       -0.7461,
+       2.4991
+      ],
+      [
+       1.304,
+       -0.7393,
+       2.4903
+      ],
+      [
+       2.3036,
+       0.1693,
+       3.3614
+      ],
+      [
+       1.9558,
+       1.6284,
+       2.4349
+      ],
+      [
+       0.4987,
+       0.5257,
+       4.8751
+      ],
+      [
+       1.2412,
+       2.1099,
+       4.6715
+      ],
+      [
+       -0.4986,
+       2.7402,
+       3.017
+      ],
+      [
+       -1.241,
+       2.2645,
+       4.5418
+      ],
+      [
+       -2.3034,
+       1.3114,
+       2.4031
+      ],
+      [
+       -1.9556,
+       0.1455,
+       3.6793
+      ]
+     ]
+    }
+   ],
+   "configuration": "Cyclohexene at 1/9 ML di-sigma bonded through C1 and C2 over a bridge site, the ring rising at 50° from the surface (Wellendorff et al. (2015) SI Fig. S1, system 36), on the five-layer slab with four relaxed layers of Araujo et al.; C1 and C2 2.00 Å above the top layer, their H atoms in sp3 positions."
+  },
+  "C10H8/Pt(111) ontop": {
+   "slab": "Pt(111) 4x4",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.7,
+       2.1
+      ],
+      [
+       0.0,
+       -0.7,
+       2.1
+      ],
+      [
+       -1.2124,
+       1.4,
+       2.1
+      ],
+      [
+       -2.4249,
+       0.7,
+       2.1
+      ],
+      [
+       -2.4249,
+       -0.7,
+       2.1
+      ],
+      [
+       -1.2124,
+       -1.4,
+       2.1
+      ],
+      [
+       1.2124,
+       1.4,
+       2.1
+      ],
+      [
+       2.4249,
+       0.7,
+       2.1
+      ],
+      [
+       2.4249,
+       -0.7,
+       2.1
+      ],
+      [
+       1.2124,
+       -1.4,
+       2.1
+      ],
+      [
+       -1.2124,
+       2.4149,
+       2.4694
+      ],
+      [
+       -3.3038,
+       1.2074,
+       2.4694
+      ],
+      [
+       -3.3038,
+       -1.2074,
+       2.4694
+      ],
+      [
+       -1.2124,
+       -2.4149,
+       2.4694
+      ],
+      [
+       1.2124,
+       2.4149,
+       2.4694
+      ],
+      [
+       3.3038,
+       1.2074,
+       2.4694
+      ],
+      [
+       3.3038,
+       -1.2074,
+       2.4694
+      ],
+      [
+       1.2124,
+       -2.4149,
+       2.4694
+      ]
+     ]
+    }
+   ],
+   "configuration": "Naphthalene at 1/16 ML (4x4 slab, Sharada et al. Appendix A) lying flat, the molecule centred over a top site with the long axis along a close-packed row, so that both rings sit next to bridge sites (the di-bridge geometry, the most stable of Morin et al., J. Phys. Chem. B 108, 12084 (2004)); the carbons 2.10 Å above the top layer, the C-H bonds bent 20° up."
+  },
+  "(H2O)6/Pt(111)": {
+   "slab": "Pt(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       1,
+       0
+      ]
+     },
+     "symbols": [
+      "O",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.3
+      ],
+      [
+       -0.6061,
+       -0.7828,
+       2.3
+      ],
+      [
+       -0.6061,
+       0.7828,
+       2.3
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       2,
+       1
+      ]
+     },
+     "symbols": [
+      "O",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.3
+      ],
+      [
+       -0.6061,
+       -0.7828,
+       2.3
+      ],
+      [
+       -0.6061,
+       0.7828,
+       2.3
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       0,
+       2
+      ]
+     },
+     "symbols": [
+      "O",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.3
+      ],
+      [
+       -0.6061,
+       -0.7828,
+       2.3
+      ],
+      [
+       -0.6061,
+       0.7828,
+       2.3
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       2,
+       0
+      ]
+     },
+     "symbols": [
+      "O",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       3.1
+      ],
+      [
+       -0.99,
+       0.0,
+       3.1
+      ],
+      [
+       0.2479,
+       0.0,
+       2.1415
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       0,
+       1
+      ]
+     },
+     "symbols": [
+      "O",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       3.1
+      ],
+      [
+       -0.99,
+       0.0,
+       3.1
+      ],
+      [
+       0.2479,
+       0.0,
+       2.1415
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       1,
+       2
+      ]
+     },
+     "symbols": [
+      "O",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       3.1
+      ],
+      [
+       -0.99,
+       0.0,
+       3.1
+      ],
+      [
+       0.2479,
+       0.0,
+       2.1415
+      ]
+     ]
+    }
+   ],
+   "configuration": "Water at 2/3 ML as the hexagonal H-down bilayer (Araujo et al. (2022), as in the experiment's islands; CE39 used a single molecule at 1/4 ML): O atoms on the top sites of a honeycomb, three flat-lying molecules (O 2.30 Å above Pt) donating two H bonds and three molecules 0.8 Å higher donating one and pointing the other H down; 6 H2O per 3x3 cell."
+  },
+  "(H2O...OH)3/Pt(111)": {
+   "slab": "Pt(111) 3x3",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       1,
+       0
+      ]
+     },
+     "symbols": [
+      "O",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.2
+      ],
+      [
+       -0.6061,
+       -0.7828,
+       2.2
+      ],
+      [
+       -0.6061,
+       0.7828,
+       2.2
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       2,
+       1
+      ]
+     },
+     "symbols": [
+      "O",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.2
+      ],
+      [
+       -0.6061,
+       -0.7828,
+       2.2
+      ],
+      [
+       -0.6061,
+       0.7828,
+       2.2
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       0,
+       2
+      ]
+     },
+     "symbols": [
+      "O",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.2
+      ],
+      [
+       -0.6061,
+       -0.7828,
+       2.2
+      ],
+      [
+       -0.6061,
+       0.7828,
+       2.2
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       2,
+       0
+      ]
+     },
+     "symbols": [
+      "O",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.05
+      ],
+      [
+       -0.98,
+       0.0,
+       2.05
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       0,
+       1
+      ]
+     },
+     "symbols": [
+      "O",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.05
+      ],
+      [
+       -0.98,
+       0.0,
+       2.05
+      ]
+     ]
+    },
+    {
+     "anchor": {
+      "site": "ontop",
+      "shift": [
+       1,
+       2
+      ]
+     },
+     "symbols": [
+      "O",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.05
+      ],
+      [
+       -0.98,
+       0.0,
+       2.05
+      ]
+     ]
+    }
+   ],
+   "configuration": "The flat (H2O...OH) honeycomb of Wellendorff et al. (2015) SI Fig. S1, system 39: O atoms on the top sites, H2O and OH alternating, every H in an H bond (3 H2O + 3 OH per 3x3 cell, 2/3 ML)."
+  },
+  "O/Pt(111) fcc 3x2": {
+   "slab": "Pt(111) 3x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "site": "fcc"
+     },
+     "symbols": [
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       1.2791
+      ]
+     ]
+    }
+   ],
+   "configuration": "O on the fcc site at 1/6 ML: the O coverage consumed by the (H2O...OH) network of the 3x3 cell (1.5 O per 9 Pt, Wellendorff et al. Table 3); O-Pt 2.05 Å."
+  },
+  "CH4/MgO(001)": {
+   "slab": "MgO(001) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Mg"
+     },
+     "symbols": [
+      "C",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       -0.0,
+       3.1247
+      ],
+      [
+       0.0,
+       0.8981,
+       3.7545
+      ],
+      [
+       0.0,
+       -0.8981,
+       3.7545
+      ],
+      [
+       0.9039,
+       0.0,
+       2.4994
+      ],
+      [
+       -0.9039,
+       0.0,
+       2.4994
+      ]
+     ]
+    }
+   ],
+   "configuration": "CH4 over Mg with two H down (dipod): the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/CH4), placed relative to a surface Mg."
+  },
+  "C2H6/MgO(001)": {
+   "slab": "MgO(001) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Mg"
+     },
+     "symbols": [
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0388,
+       -0.0194,
+       3.0655
+      ],
+      [
+       1.4821,
+       -0.0045,
+       3.579
+      ],
+      [
+       -0.1511,
+       -0.9086,
+       2.4426
+      ],
+      [
+       -0.1776,
+       0.8799,
+       2.4662
+      ],
+      [
+       -0.692,
+       -0.0411,
+       3.8874
+      ],
+      [
+       2.1889,
+       0.018,
+       2.7366
+      ],
+      [
+       1.702,
+       -0.8972,
+       4.1828
+      ],
+      [
+       1.6743,
+       0.8767,
+       4.2087
+      ]
+     ]
+    }
+   ],
+   "configuration": "ethane lying nearly flat over Mg: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/C2H6), placed relative to a surface Mg."
+  },
+  "CO/MgO(001)": {
+   "slab": "MgO(001) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Mg"
+     },
+     "symbols": [
+      "C",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.0,
+       2.441
+      ],
+      [
+       0.0,
+       0.0,
+       3.5878
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO upright on Mg, C down: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/CO), placed relative to a surface Mg."
+  },
+  "CO2/MgO(001) chemisorbed": {
+   "slab": "MgO(001) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "O"
+     },
+     "symbols": [
+      "C",
+      "O",
+      "O"
+     ],
+     "positions": [
+      [
+       0.0,
+       -0.0001,
+       1.4695
+      ],
+      [
+       0.0,
+       1.1558,
+       1.9641
+      ],
+      [
+       0.0,
+       -1.1557,
+       1.9641
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO2 chemisorbed as a carbonate on a surface O, its O atoms towards two Mg (the state Shi et al. assign to the experiment of Chakradhar and Burghaus; Surf13 holds the physisorbed state): the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/CO2_Chemisorbed), placed relative to a surface O."
+  },
+  "H2O/MgO(001)": {
+   "slab": "MgO(001) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Mg"
+     },
+     "symbols": [
+      "H",
+      "H",
+      "O"
+     ],
+     "positions": [
+      [
+       1.0013,
+       0.5137,
+       2.4217
+      ],
+      [
+       0.0997,
+       1.5132,
+       1.6014
+      ],
+      [
+       0.0792,
+       0.6636,
+       2.1484
+      ]
+     ]
+    }
+   ],
+   "configuration": "H2O monomer on Mg, one H bond to surface O: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/H2O_Monomer), placed relative to a surface Mg."
+  },
+  "N2O/MgO(001)": {
+   "slab": "MgO(001) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Mg"
+     },
+     "symbols": [
+      "N",
+      "N",
+      "O"
+     ],
+     "positions": [
+      [
+       -1.9086,
+       -1.7201,
+       3.0125
+      ],
+      [
+       -1.0744,
+       -0.9542,
+       2.8503
+      ],
+      [
+       -0.1999,
+       -0.1509,
+       2.6611
+      ]
+     ]
+    }
+   ],
+   "configuration": "N2O lying parallel to the surface: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/N2O_Parallel), placed relative to a surface Mg."
+  },
+  "NH3/MgO(001)": {
+   "slab": "MgO(001) 2x2",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Mg"
+     },
+     "symbols": [
+      "N",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0,
+       0.1425,
+       2.2498
+      ],
+      [
+       0.0,
+       1.1516,
+       2.4106
+      ],
+      [
+       -0.8266,
+       -0.2469,
+       2.7034
+      ],
+      [
+       0.8266,
+       -0.2469,
+       2.7034
+      ]
+     ]
+    }
+   ],
+   "configuration": "NH3 on Mg, N down: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/NH3), placed relative to a surface Mg."
+  },
+  "CH4/TiO2 rutile(110)": {
+   "slab": "TiO2 rutile(110) p(4x2)",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Ti",
+      "neighbours": 5
+     },
+     "symbols": [
+      "C",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.0007,
+       -0.0001,
+       3.1438
+      ],
+      [
+       -0.0487,
+       0.8968,
+       3.7726
+      ],
+      [
+       0.0503,
+       -0.8966,
+       3.7726
+      ],
+      [
+       0.9184,
+       0.0488,
+       2.5426
+      ],
+      [
+       -0.917,
+       -0.0489,
+       2.5429
+      ]
+     ]
+    }
+   ],
+   "configuration": "CH4 over a five-fold Ti, two H down: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/r-TiO2/CH4), placed relative to a five-fold Ti."
+  },
+  "CO2/TiO2 rutile(110) tilted": {
+   "slab": "TiO2 rutile(110) p(4x2)",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Ti",
+      "neighbours": 5
+     },
+     "symbols": [
+      "C",
+      "O",
+      "O"
+     ],
+     "positions": [
+      [
+       -1.0175,
+       0.0,
+       3.3329
+      ],
+      [
+       -1.803,
+       0.0,
+       4.2007
+      ],
+      [
+       -0.1788,
+       0.0,
+       2.4955
+      ]
+     ]
+    }
+   ],
+   "configuration": "CO2 tilted, one O on a five-fold Ti: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/r-TiO2/CO2_Tilted), placed relative to a five-fold Ti."
+  },
+  "H2O/TiO2 rutile(110)": {
+   "slab": "TiO2 rutile(110) p(4x2)",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Ti",
+      "neighbours": 5
+     },
+     "symbols": [
+      "H",
+      "H",
+      "O"
+     ],
+     "positions": [
+      [
+       0.131,
+       0.5954,
+       2.7668
+      ],
+      [
+       1.4649,
+       -0.041,
+       2.1819
+      ],
+      [
+       0.4705,
+       -0.0981,
+       2.1766
+      ]
+     ]
+    }
+   ],
+   "configuration": "H2O on a five-fold Ti, one H bond to a bridging O: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/r-TiO2/H2O), placed relative to a five-fold Ti."
+  },
+  "CH3OH/TiO2 rutile(110)": {
+   "slab": "TiO2 rutile(110) p(4x2)",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Ti",
+      "neighbours": 5
+     },
+     "symbols": [
+      "C",
+      "O",
+      "H",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       0.1139,
+       1.04,
+       3.0392
+      ],
+      [
+       0.4901,
+       -0.0234,
+       2.1265
+      ],
+      [
+       -0.9729,
+       1.1491,
+       2.9827
+      ],
+      [
+       1.4875,
+       -0.0761,
+       2.0862
+      ],
+      [
+       0.4124,
+       0.7578,
+       4.0577
+      ],
+      [
+       0.6132,
+       1.9823,
+       2.7639
+      ]
+     ]
+    }
+   ],
+   "configuration": "CH3OH bound through O to a five-fold Ti, H bond to a bridging O: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/r-TiO2/CH3OH), placed relative to a five-fold Ti."
+  },
+  "H2O/TiO2 anatase(101)": {
+   "slab": "TiO2 anatase(101) 3x1",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Ti",
+      "neighbours": 5
+     },
+     "symbols": [
+      "H",
+      "H",
+      "O"
+     ],
+     "positions": [
+      [
+       1.9045,
+       0.7688,
+       1.8594
+      ],
+      [
+       1.9045,
+       -0.7688,
+       1.8594
+      ],
+      [
+       1.2969,
+       -0.0,
+       1.8942
+      ]
+     ]
+    }
+   ],
+   "configuration": "H2O on a five-fold Ti, H atoms towards two-fold O: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/a-TiO2/H2O), placed relative to a five-fold Ti."
+  },
+  "NH3/TiO2 anatase(101)": {
+   "slab": "TiO2 anatase(101) 3x1",
+   "adsorbates": [
+    {
+     "anchor": {
+      "atom": "Ti",
+      "neighbours": 5
+     },
+     "symbols": [
+      "N",
+      "H",
+      "H",
+      "H"
+     ],
+     "positions": [
+      [
+       1.0867,
+       0.0,
+       2.0208
+      ],
+      [
+       0.4402,
+       0.0,
+       2.8099
+      ],
+      [
+       1.6939,
+       -0.8188,
+       2.0979
+      ],
+      [
+       1.6939,
+       0.8188,
+       2.0979
+      ]
+     ]
+    }
+   ],
+   "configuration": "NH3 on a five-fold Ti, N down: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/a-TiO2/NH3), placed relative to a five-fold Ti."
+  }
+ },
+ "reactions": [
+  {
+   "id": "ADS41-01",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "C2H4 + Pt(111) -> CCH3/Pt(111) + H/Pt(111)",
+   "terms": {
+    "CCH3/Pt(111) fcc 3x3": 1.0,
+    "H/Pt(111) fcc 3x3": 1.0,
+    "Pt(111) 3x3": -2.0,
+    "C2H4": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -1.36,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I"
+   },
+   "configuration": "Ethylidyne on the fcc site at 1/9 ML, C-C along the normal (Sharada et al. Appendix A: 3x3 slab); C-Pt 2.00 Å, C-C 1.50 Å. H on the fcc site at 1/9 ML, the 3x3 slab of the ethylene dissociation (Sharada et al. (2019) Appendix A)."
+  },
+  {
+   "id": "ADS41-02",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CH2I2 + Pt(111) -> CH/Pt(111) + H/Pt(111) + 2 I/Pt(111)",
+   "terms": {
+    "CH/Pt(111) fcc 4x4": 1.0,
+    "Pt(111) 4x4": -1.0,
+    "H/Pt(111) fcc 2x2": 1.0,
+    "I/Pt(111) fcc 2x2": 2.0,
+    "Pt(111) 2x2": -3.0,
+    "CH2I2": -1.0
+   },
+   "adsorbates_per_reaction": 4,
+   "reference": {
+    "energy": -4.72,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 24 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "Methylidyne on the fcc site at 1/16 ML (Araujo et al., to mimic the low coverage of the experiment; CE39 used 1/4 ML); C-Pt 2.02 Å. H on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); Araujo et al. list the top site, but Fig. S1 (system 18) shows H in a three-fold hollow; H-Pt 1.86 Å. I on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); I-Pt 2.75 Å."
+  },
+  {
+   "id": "ADS41-03",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CH3I + Pt(111) -> CH3/Pt(111) + I/Pt(111)",
+   "terms": {
+    "CH3/Pt(111) ontop 4x4": 1.0,
+    "Pt(111) 4x4": -1.0,
+    "I/Pt(111) fcc 2x2": 1.0,
+    "Pt(111) 2x2": -1.0,
+    "CH3I": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -2.17,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 25 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "Methyl on the top site (Wellendorff et al. (2015) SI Fig. S1, system 27) at 1/16 ML (Araujo et al.; CE39 used 1/4 ML); C-Pt 2.08 Å. I on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); I-Pt 2.75 Å."
+  },
+  {
+   "id": "ADS41-04",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CO + Co(0001) -> CO/Co(0001)",
+   "terms": {
+    "CO/Co(0001) ontop": 1.0,
+    "Co(0001) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.23,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 9 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Co 1.75 Å."
+  },
+  {
+   "id": "ADS41-05",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CO + Cu(111) -> CO/Cu(111)",
+   "terms": {
+    "CO/Cu(111) ontop": 1.0,
+    "Cu(111) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.59,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 7 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Cu 1.85 Å."
+  },
+  {
+   "id": "ADS41-06",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CO + Ir(111) -> CO/Ir(111)",
+   "terms": {
+    "CO/Ir(111) ontop": 1.0,
+    "Ir(111) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.7,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 6 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Ir 1.86 Å."
+  },
+  {
+   "id": "ADS41-07",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CO + Ni(111) -> CO/Ni(111)",
+   "terms": {
+    "CO/Ni(111) fcc": 1.0,
+    "Ni(111) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.29,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 1 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CO upright on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Ni 1.95 Å."
+  },
+  {
+   "id": "ADS41-08",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CO + Pd(100) -> CO/Pd(100)",
+   "terms": {
+    "CO/Pd(100) bridge": 1.0,
+    "Pd(100) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.63,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 4 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CO upright on the bridge site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Pd 1.98 Å."
+  },
+  {
+   "id": "ADS41-09",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CO + Pd(111) -> CO/Pd(111)",
+   "terms": {
+    "CO/Pd(111) fcc": 1.0,
+    "Pd(111) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.49,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 3 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CO upright on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Pd 2.07 Å."
+  },
+  {
+   "id": "ADS41-10",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CO + Pt(111) -> CO/Pt(111)",
+   "terms": {
+    "CO/Pt(111) ontop": 1.0,
+    "Pt(111) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.29,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 2 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Pt 1.85 Å."
+  },
+  {
+   "id": "ADS41-11",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CO + Rh(111) -> CO/Rh(111)",
+   "terms": {
+    "CO/Rh(111) ontop": 1.0,
+    "Rh(111) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.47,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 5 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Rh 1.83 Å."
+  },
+  {
+   "id": "ADS41-12",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "CO + Ru(0001) -> CO/Ru(0001)",
+   "terms": {
+    "CO/Ru(0001) ontop": 1.0,
+    "Ru(0001) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.67,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 8 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CO upright on the ontop site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. (2022) Table 3); C-Ru 1.92 Å."
+  },
+  {
+   "id": "ADS41-13",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "H2 + Ni(100) -> 2 H/Ni(100)",
+   "terms": {
+    "H/Ni(100) hollow 2x2": 2.0,
+    "Ni(100) 2x2": -2.0,
+    "H2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -0.9,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 20 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "H on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); H-Ni 1.85 Å."
+  },
+  {
+   "id": "ADS41-14",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "H2 + Ni(111) -> 2 H/Ni(111)",
+   "terms": {
+    "H/Ni(111) fcc 2x2": 2.0,
+    "Ni(111) 2x2": -2.0,
+    "H2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -1.04,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 19 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "H on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); H-Ni 1.71 Å."
+  },
+  {
+   "id": "ADS41-15",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "H2 + Pd(111) -> 2 H/Pd(111)",
+   "terms": {
+    "H/Pd(111) fcc 2x2": 2.0,
+    "Pd(111) 2x2": -2.0,
+    "H2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -0.93,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 22 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "H on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); H-Pd 1.80 Å."
+  },
+  {
+   "id": "ADS41-16",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "H2 + Pt(111) -> 2 H/Pt(111)",
+   "terms": {
+    "H/Pt(111) fcc 2x2": 2.0,
+    "Pt(111) 2x2": -2.0,
+    "H2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -0.75,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 18 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "H on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); Araujo et al. list the top site, but Fig. S1 (system 18) shows H in a three-fold hollow; H-Pt 1.86 Å."
+  },
+  {
+   "id": "ADS41-17",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "H2 + Rh(111) -> 2 H/Rh(111)",
+   "terms": {
+    "H/Rh(111) fcc 2x2": 2.0,
+    "Rh(111) 2x2": -2.0,
+    "H2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -0.75,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 21 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "H on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); H-Rh 1.85 Å."
+  },
+  {
+   "id": "ADS41-18",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "I2 + Pt(111) -> 2 I/Pt(111)",
+   "terms": {
+    "I/Pt(111) fcc 2x2": 2.0,
+    "Pt(111) 2x2": -2.0,
+    "I2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -3.24,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 23 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "I on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); I-Pt 2.75 Å."
+  },
+  {
+   "id": "ADS41-19",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "NO + Ni(100) -> N/Ni(100) + O/Ni(100)",
+   "terms": {
+    "N/Ni(100) hollow 2x2": 1.0,
+    "O/Ni(100) hollow 2x2": 1.0,
+    "Ni(100) 2x2": -2.0,
+    "NO": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -3.1,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 10 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "N on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); N-Ni 1.85 Å. O on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); O-Ni 1.96 Å."
+  },
+  {
+   "id": "ADS41-20",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "NO + Pd(100) -> NO/Pd(100)",
+   "terms": {
+    "NO/Pd(100) hollow": 1.0,
+    "Pd(100) 2x2": -1.0,
+    "NO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.69,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 13 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "NO upright on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, systems 11-13; Araujo et al. Table 3); N-Pd 2.15 Å."
+  },
+  {
+   "id": "ADS41-21",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "NO + Pd(111) -> NO/Pd(111)",
+   "terms": {
+    "NO/Pd(111) fcc": 1.0,
+    "Pd(111) 2x2": -1.0,
+    "NO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.89,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 12 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "NO upright on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, systems 11-13; Araujo et al. Table 3); N-Pd 2.05 Å."
+  },
+  {
+   "id": "ADS41-22",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "NO + Pt(111) -> NO/Pt(111)",
+   "terms": {
+    "NO/Pt(111) fcc": 1.0,
+    "Pt(111) 2x2": -1.0,
+    "NO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.23,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 11 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "NO upright on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, systems 11-13; Araujo et al. Table 3); N-Pt 2.07 Å."
+  },
+  {
+   "id": "ADS41-23",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "O2 + Ni(100) -> 2 O/Ni(100)",
+   "terms": {
+    "O/Ni(100) hollow 2x2": 2.0,
+    "Ni(100) 2x2": -2.0,
+    "O2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -5.49,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 15 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "O on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); O-Ni 1.96 Å."
+  },
+  {
+   "id": "ADS41-24",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "O2 + Ni(111) -> 2 O/Ni(111)",
+   "terms": {
+    "O/Ni(111) fcc 2x2": 2.0,
+    "Ni(111) 2x2": -2.0,
+    "O2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -5.03,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 14 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "O on the fcc site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); O-Ni 1.86 Å."
+  },
+  {
+   "id": "ADS41-25",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "O2 + Pt(111) -> 2 O/Pt(111)",
+   "terms": {
+    "O/Pt(111) fcc 3x3": 2.0,
+    "Pt(111) 3x3": -2.0,
+    "O2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -2.16,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 16 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "O on the fcc site at 1/9 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); O-Pt 2.05 Å."
+  },
+  {
+   "id": "ADS41-26",
+   "subset": "ADS41",
+   "category": "chemisorption",
+   "mixed": false,
+   "equation": "O2 + Rh(100) -> 2 O/Rh(100)",
+   "terms": {
+    "O/Rh(100) hollow 2x2": 2.0,
+    "Rh(100) 2x2": -2.0,
+    "O2": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -3.68,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 17 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "O on the hollow site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1; Araujo et al. Table 3); O-Rh 2.08 Å."
+  },
+  {
+   "id": "ADS41-27",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": false,
+   "equation": "C2H6 + Pt(111) -> C2H6/Pt(111)",
+   "terms": {
+    "C2H6/Pt(111) fcc": 1.0,
+    "Pt(111) 3x3": -1.0,
+    "C2H6": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.28,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 30 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "Ethane at 1/9 ML with its C-C axis parallel to the surface along [2a1 - a2] (as in Wellendorff et al. (2015) SI Fig. S1, system 29), the C-C midpoint over the fcc site (Araujo et al. Table 3); the lowest H 2.50 Å above the top layer."
+  },
+  {
+   "id": "ADS41-28",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": false,
+   "equation": "C3H8 + Pt(111) -> C3H8/Pt(111)",
+   "terms": {
+    "C3H8/Pt(111) ontop": 1.0,
+    "Pt(111) 3x3": -1.0,
+    "C3H8": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.4,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 31 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "All-trans C3H8 at 1/9 ML lying flat, its carbon plane parallel to the surface and the chain along a close-packed row (as in Wellendorff et al. (2015) SI Fig. S1, systems 30-31), the carbon centroid over a top site (Araujo et al. Table 3); the lowest H 2.50 Å above the top layer."
+  },
+  {
+   "id": "ADS41-29",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": false,
+   "equation": "C4H10 + Pt(111) -> C4H10/Pt(111)",
+   "terms": {
+    "C4H10/Pt(111) ontop": 1.0,
+    "Pt(111) 3x3": -1.0,
+    "C4H10": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.5,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 32 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "All-trans C4H10 at 1/9 ML lying flat, its carbon plane parallel to the surface and the chain along a close-packed row (as in Wellendorff et al. (2015) SI Fig. S1, systems 30-31), the carbon centroid over a top site (Araujo et al. Table 3); the lowest H 2.50 Å above the top layer."
+  },
+  {
+   "id": "ADS41-30",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": true,
+   "equation": "C6H6 + Ag(111) -> C6H6/Ag(111)",
+   "terms": {
+    "C6H6/Ag(111) fcc": 1.0,
+    "Ag(111) 3x3": -1.0,
+    "C6H6": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.63,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 35 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "Benzene at 1/9 ML lying flat over the fcc site, two C-H bonds along y (Wellendorff et al. (2015) SI Fig. S1, systems 33-35; site: Araujo et al. Table 3); the ring 3.1 Å above the top layer."
+  },
+  {
+   "id": "ADS41-31",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": true,
+   "equation": "C6H6 + Au(111) -> C6H6/Au(111)",
+   "terms": {
+    "C6H6/Au(111) fcc": 1.0,
+    "Au(111) 3x3": -1.0,
+    "C6H6": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.73,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 36 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "Benzene at 1/9 ML lying flat over the fcc site, two C-H bonds along y (Wellendorff et al. (2015) SI Fig. S1, systems 33-35; site: Araujo et al. Table 3); the ring 3.1 Å above the top layer."
+  },
+  {
+   "id": "ADS41-32",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": true,
+   "equation": "C6H6 + Cu(111) -> C6H6/Cu(111)",
+   "terms": {
+    "C6H6/Cu(111) fcc": 1.0,
+    "Cu(111) 3x3": -1.0,
+    "C6H6": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.68,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 34 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "Benzene at 1/9 ML lying flat over the fcc site, two C-H bonds along y (Wellendorff et al. (2015) SI Fig. S1, systems 33-35; site: Araujo et al. Table 3); the ring 3.0 Å above the top layer."
+  },
+  {
+   "id": "ADS41-33",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": true,
+   "equation": "C6H6 + Pt(111) -> C6H6/Pt(111)",
+   "terms": {
+    "C6H6/Pt(111) bridge": 1.0,
+    "Pt(111) 3x3 5 layers": -1.0,
+    "C6H6": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.68,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 33 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "Benzene at 1/9 ML chemisorbed over the bridge site, in the geometry relaxed by Araujo et al. (2022) on a five-layer slab with four relaxed layers (their SI Supplementary Note 1; CE39 used a flat benzene on a four-layer slab)."
+  },
+  {
+   "id": "ADS41-34",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": true,
+   "equation": "C6H10 + Pt(111) -> C6H10/Pt(111)",
+   "terms": {
+    "C6H10/Pt(111) bridge": 1.0,
+    "Pt(111) 3x3 5 layers": -1.0,
+    "C6H10": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.27,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 37 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "Cyclohexene at 1/9 ML di-sigma bonded through C1 and C2 over a bridge site, the ring rising at 50° from the surface (Wellendorff et al. (2015) SI Fig. S1, system 36), on the five-layer slab with four relaxed layers of Araujo et al.; C1 and C2 2.00 Å above the top layer, their H atoms in sp3 positions."
+  },
+  {
+   "id": "ADS41-35",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": true,
+   "equation": "C10H8 + Pt(111) -> C10H8/Pt(111)",
+   "terms": {
+    "C10H8/Pt(111) ontop": 1.0,
+    "Pt(111) 4x4": -1.0,
+    "C10H8": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -2.76,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I"
+   },
+   "configuration": "Naphthalene at 1/16 ML (4x4 slab, Sharada et al. Appendix A) lying flat, the molecule centred over a top site with the long axis along a close-packed row, so that both rings sit next to bridge sites (the di-bridge geometry, the most stable of Morin et al., J. Phys. Chem. B 108, 12084 (2004)); the carbons 2.10 Å above the top layer, the C-H bonds bent 20° up."
+  },
+  {
+   "id": "ADS41-36",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": true,
+   "equation": "CH3I + Pt(111) -> CH3I/Pt(111)",
+   "terms": {
+    "CH3I/Pt(111) ontop": 1.0,
+    "Pt(111) 2x2": -1.0,
+    "CH3I": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.87,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 27 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CH3I standing on I on the top site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, system 25); I-Pt 2.80 Å."
+  },
+  {
+   "id": "ADS41-37",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": false,
+   "equation": "CH3OH + Pt(111) -> CH3OH/Pt(111)",
+   "terms": {
+    "CH3OH/Pt(111) ontop": 1.0,
+    "Pt(111) 2x2": -1.0,
+    "CH3OH": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.57,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 28 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CH3OH bound through O on the top site at 1/4 ML, C-O tilted 45° from the normal and the hydroxyl H near the surface plane (Wellendorff et al. (2015) SI Fig. S1, system 26); O-Pt 2.40 Å."
+  },
+  {
+   "id": "ADS41-38",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": false,
+   "equation": "CH4 + Pt(111) -> CH4/Pt(111)",
+   "terms": {
+    "CH4/Pt(111) fcc": 1.0,
+    "Pt(111) 2x2": -1.0,
+    "CH4": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.15,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 29 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "CH4 over the fcc site at 1/4 ML with three H down (tripod, Wellendorff et al. (2015) SI Fig. S1 system 28; site: Araujo et al. Table 3); the lower H 2.60 Å above the top layer."
+  },
+  {
+   "id": "ADS41-39",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": false,
+   "equation": "D2O + 1/3 O/Pt(111) -> 2/3 (D2O...OD)/Pt(111)",
+   "terms": {
+    "(H2O...OH)3/Pt(111)": 0.2222222222222222,
+    "Pt(111) 3x3": -0.2222222222222222,
+    "O/Pt(111) fcc 3x2": -0.3333333333333333,
+    "Pt(111) 3x2": 0.3333333333333333,
+    "H2O": -1.0
+   },
+   "adsorbates_per_reaction": 2,
+   "reference": {
+    "energy": -0.68,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 39 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "The flat (H2O...OH) honeycomb of Wellendorff et al. (2015) SI Fig. S1, system 39: O atoms on the top sites, H2O and OH alternating, every H in an H bond (3 H2O + 3 OH per 3x3 cell, 2/3 ML). O on the fcc site at 1/6 ML: the O coverage consumed by the (H2O...OH) network of the 3x3 cell (1.5 O per 9 Pt, Wellendorff et al. Table 3); O-Pt 2.05 Å."
+  },
+  {
+   "id": "ADS41-40",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": false,
+   "equation": "D2O + Pt(111) -> D2O/Pt(111)",
+   "terms": {
+    "(H2O)6/Pt(111)": 0.16666666666666666,
+    "Pt(111) 3x3": -0.16666666666666666,
+    "H2O": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.57,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 38 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "Water at 2/3 ML as the hexagonal H-down bilayer (Araujo et al. (2022), as in the experiment's islands; CE39 used a single molecule at 1/4 ML): O atoms on the top sites of a honeycomb, three flat-lying molecules (O 2.30 Å above Pt) donating two H bonds and three molecules 0.8 Å higher donating one and pointing the other H down; 6 H2O per 3x3 cell."
+  },
+  {
+   "id": "ADS41-41",
+   "subset": "ADS41",
+   "category": "dispersion",
+   "mixed": false,
+   "equation": "NH3 + Cu(100) -> NH3/Cu(100)",
+   "terms": {
+    "NH3/Cu(100) ontop": 1.0,
+    "Cu(100) 2x2": -1.0,
+    "NH3": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.62,
+    "quantity": "experimental reaction energy minus the PBE zero-point energy change",
+    "source": "Sharada et al., Phys. Rev. B 100, 035439 (2019), Table I; CE39 reaction 26 (Wellendorff et al. Table 4)"
+   },
+   "configuration": "NH3 bound through N on the top site at 1/4 ML (Wellendorff et al. (2015) SI Fig. S1, system 24); N-Cu 2.10 Å."
+  },
+  {
+   "id": "Surf13-01",
+   "subset": "Surf13",
+   "category": "MgO",
+   "mixed": false,
+   "equation": "CH4 + MgO(001) -> CH4/MgO(001)",
+   "terms": {
+    "CH4/MgO(001)": 1.0,
+    "MgO(001) 2x2": -1.0,
+    "CH4": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.126,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.115,
+    "enthalpy_uncertainty": 0.019,
+    "temperature": 47,
+    "vibrational_enthalpy": 0.011,
+    "vibrational_enthalpy_uncertainty": 0.013,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD, dilute limit: Tait, Dohnálek, Campbell, Kay, J. Chem. Phys. 122, 164707 and 164708 (2005)"
+   },
+   "configuration": "CH4 over Mg with two H down (dipod): the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/CH4), placed relative to a surface Mg."
+  },
+  {
+   "id": "Surf13-02",
+   "subset": "Surf13",
+   "category": "MgO",
+   "mixed": false,
+   "equation": "C2H6 + MgO(001) -> C2H6/MgO(001)",
+   "terms": {
+    "C2H6/MgO(001)": 1.0,
+    "MgO(001) 2x2": -1.0,
+    "C2H6": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.22,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.221,
+    "enthalpy_uncertainty": 0.03,
+    "temperature": 75,
+    "vibrational_enthalpy": -0.001,
+    "vibrational_enthalpy_uncertainty": 0.01,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD, dilute limit: Tait, Dohnálek, Campbell, Kay, J. Chem. Phys. 122, 164707 and 164708 (2005)"
+   },
+   "configuration": "ethane lying nearly flat over Mg: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/C2H6), placed relative to a surface Mg."
+  },
+  {
+   "id": "Surf13-03",
+   "subset": "Surf13",
+   "category": "MgO",
+   "mixed": false,
+   "equation": "CO + MgO(001) -> CO/MgO(001)",
+   "terms": {
+    "CO/MgO(001)": 1.0,
+    "MgO(001) 2x2": -1.0,
+    "CO": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.195,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.176,
+    "enthalpy_uncertainty": 0.021,
+    "temperature": 61,
+    "vibrational_enthalpy": 0.019,
+    "vibrational_enthalpy_uncertainty": 0.003,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD, low coverage: Dohnálek et al., J. Phys. Chem. B 105, 3747 (2001); Wichtendahl et al., Phys. Status Solidi A 173, 93 (1999); re-analysed by Campbell and Sellers, Chem. Rev. 113, 4106 (2013)"
+   },
+   "configuration": "CO upright on Mg, C down: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/CO), placed relative to a surface Mg."
+  },
+  {
+   "id": "Surf13-04",
+   "subset": "Surf13",
+   "category": "MgO",
+   "mixed": false,
+   "equation": "CO2 + MgO(001) -> CO2/MgO(001)",
+   "terms": {
+    "CO2/MgO(001) chemisorbed": 1.0,
+    "MgO(001) 2x2": -1.0,
+    "CO2": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.682,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.664,
+    "enthalpy_uncertainty": 0.125,
+    "temperature": 230,
+    "vibrational_enthalpy": 0.018,
+    "vibrational_enthalpy_uncertainty": 0.002,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD of the chemisorbed state: Chakradhar and Burghaus, Surf. Sci. 616, 171 (2013)"
+   },
+   "configuration": "CO2 chemisorbed as a carbonate on a surface O, its O atoms towards two Mg (the state Shi et al. assign to the experiment of Chakradhar and Burghaus; Surf13 holds the physisorbed state): the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/CO2_Chemisorbed), placed relative to a surface O."
+  },
+  {
+   "id": "Surf13-05",
+   "subset": "Surf13",
+   "category": "MgO",
+   "mixed": false,
+   "equation": "H2O + MgO(001) -> H2O/MgO(001)",
+   "terms": {
+    "H2O/MgO(001)": 1.0,
+    "MgO(001) 2x2": -1.0,
+    "H2O": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.567,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.52,
+    "enthalpy_uncertainty": 0.121,
+    "temperature": 203,
+    "vibrational_enthalpy": 0.047,
+    "vibrational_enthalpy_uncertainty": 0.003,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "LEED isotherms, monolayer minus lateral interactions: Ferry et al., Surf. Sci. 377-379, 634 (1997) and 409, 101 (1998)"
+   },
+   "configuration": "H2O monomer on Mg, one H bond to surface O: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/H2O_Monomer), placed relative to a surface Mg."
+  },
+  {
+   "id": "Surf13-06",
+   "subset": "Surf13",
+   "category": "MgO",
+   "mixed": false,
+   "equation": "N2O + MgO(001) -> N2O/MgO(001)",
+   "terms": {
+    "N2O/MgO(001)": 1.0,
+    "MgO(001) 2x2": -1.0,
+    "N2O": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.233,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.239,
+    "enthalpy_uncertainty": 0.031,
+    "temperature": 77,
+    "vibrational_enthalpy": -0.006,
+    "vibrational_enthalpy_uncertainty": 0.001,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD: Lian et al., J. Phys. Chem. C 114, 3148 (2010)"
+   },
+   "configuration": "N2O lying parallel to the surface: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/N2O_Parallel), placed relative to a surface Mg."
+  },
+  {
+   "id": "Surf13-07",
+   "subset": "Surf13",
+   "category": "MgO",
+   "mixed": false,
+   "equation": "NH3 + MgO(001) -> NH3/MgO(001)",
+   "terms": {
+    "NH3/MgO(001)": 1.0,
+    "MgO(001) 2x2": -1.0,
+    "NH3": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.657,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.613,
+    "enthalpy_uncertainty": 0.065,
+    "temperature": 160,
+    "vibrational_enthalpy": 0.044,
+    "vibrational_enthalpy_uncertainty": 0.003,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD: Arthur et al., J. Chem. Phys. 95, 8521 (1991)"
+   },
+   "configuration": "NH3 on Mg, N down: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/MgO/NH3), placed relative to a surface Mg."
+  },
+  {
+   "id": "Surf13-08",
+   "subset": "Surf13",
+   "category": "TiO2",
+   "mixed": false,
+   "equation": "CH4 + rutile TiO2(110) -> CH4/rutile TiO2(110)",
+   "terms": {
+    "CH4/TiO2 rutile(110)": 1.0,
+    "TiO2 rutile(110) p(4x2)": -1.0,
+    "CH4": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.255,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.249,
+    "enthalpy_uncertainty": 0.034,
+    "temperature": 85,
+    "vibrational_enthalpy": 0.006,
+    "vibrational_enthalpy_uncertainty": 0.011,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD, low coverage: Chen, Smith, Kay, Dohnálek, Surf. Sci. 650, 83 (2016)"
+   },
+   "configuration": "CH4 over a five-fold Ti, two H down: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/r-TiO2/CH4), placed relative to a five-fold Ti."
+  },
+  {
+   "id": "Surf13-09",
+   "subset": "Surf13",
+   "category": "TiO2",
+   "mixed": false,
+   "equation": "CO2 + rutile TiO2(110) -> CO2/rutile TiO2(110)",
+   "terms": {
+    "CO2/TiO2 rutile(110) tilted": 1.0,
+    "TiO2 rutile(110) p(4x2)": -1.0,
+    "CO2": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.491,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.493,
+    "enthalpy_uncertainty": 0.062,
+    "temperature": 177,
+    "vibrational_enthalpy": -0.002,
+    "vibrational_enthalpy_uncertainty": 0.004,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD: Thompson, Diwald, Yates, J. Phys. Chem. B 107, 11700 (2003); re-analysed by Campbell and Sellers"
+   },
+   "configuration": "CO2 tilted, one O on a five-fold Ti: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/r-TiO2/CO2_Tilted), placed relative to a five-fold Ti."
+  },
+  {
+   "id": "Surf13-10",
+   "subset": "Surf13",
+   "category": "TiO2",
+   "mixed": false,
+   "equation": "H2O + rutile TiO2(110) -> H2O/rutile TiO2(110)",
+   "terms": {
+    "H2O/TiO2 rutile(110)": 1.0,
+    "TiO2 rutile(110) p(4x2)": -1.0,
+    "H2O": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.982,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.917,
+    "enthalpy_uncertainty": 0.111,
+    "temperature": 303,
+    "vibrational_enthalpy": 0.065,
+    "vibrational_enthalpy_uncertainty": 0.005,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD, low coverage: Hugenschmidt, Gamble, Campbell, Surf. Sci. 302, 329 (1994); Dohnálek et al., J. Phys. Chem. B 110, 6229 (2006); re-analysed by Campbell and Sellers"
+   },
+   "configuration": "H2O on a five-fold Ti, one H bond to a bridging O: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/r-TiO2/H2O), placed relative to a five-fold Ti."
+  },
+  {
+   "id": "Surf13-11",
+   "subset": "Surf13",
+   "category": "TiO2",
+   "mixed": false,
+   "equation": "CH3OH + rutile TiO2(110) -> CH3OH/rutile TiO2(110)",
+   "terms": {
+    "CH3OH/TiO2 rutile(110)": 1.0,
+    "TiO2 rutile(110) p(4x2)": -1.0,
+    "CH3OH": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.245,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -1.197,
+    "enthalpy_uncertainty": 0.13,
+    "temperature": 370,
+    "vibrational_enthalpy": 0.048,
+    "vibrational_enthalpy_uncertainty": 0.007,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD: Li, Smith, Kay, Dohnálek, J. Phys. Chem. C 115, 22534 (2011); re-analysed by Campbell and Sellers"
+   },
+   "configuration": "CH3OH bound through O to a five-fold Ti, H bond to a bridging O: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/r-TiO2/CH3OH), placed relative to a five-fold Ti."
+  },
+  {
+   "id": "Surf13-12",
+   "subset": "Surf13",
+   "category": "TiO2",
+   "mixed": false,
+   "equation": "H2O + anatase TiO2(101) -> H2O/anatase TiO2(101)",
+   "terms": {
+    "H2O/TiO2 anatase(101)": 1.0,
+    "TiO2 anatase(101) 3x1": -1.0,
+    "H2O": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -0.855,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -0.786,
+    "enthalpy_uncertainty": 0.09,
+    "temperature": 257,
+    "vibrational_enthalpy": 0.069,
+    "vibrational_enthalpy_uncertainty": 0.013,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD: Herman, Dohnálek, Ruzycki, Diebold, J. Phys. Chem. B 107, 2788 (2003); re-analysed by Campbell and Sellers"
+   },
+   "configuration": "H2O on a five-fold Ti, H atoms towards two-fold O: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/a-TiO2/H2O), placed relative to a five-fold Ti."
+  },
+  {
+   "id": "Surf13-13",
+   "subset": "Surf13",
+   "category": "TiO2",
+   "mixed": false,
+   "equation": "NH3 + anatase TiO2(101) -> NH3/anatase TiO2(101)",
+   "terms": {
+    "NH3/TiO2 anatase(101)": 1.0,
+    "TiO2 anatase(101) 3x1": -1.0,
+    "NH3": -1.0
+   },
+   "adsorbates_per_reaction": 1,
+   "reference": {
+    "energy": -1.255,
+    "quantity": "experimental adsorption enthalpy minus the DFT zero-point, thermal and -RT terms",
+    "enthalpy": -1.18,
+    "enthalpy_uncertainty": 0.182,
+    "temperature": 410,
+    "vibrational_enthalpy": 0.075,
+    "vibrational_enthalpy_uncertainty": 0.007,
+    "source": "Shi et al., Nat. Chem. 17, 1688 (2025), SI Table 32 (H_ads) and Table 30 (Delta H)",
+    "experiment": "TPD, lowest coverage: Koust et al., J. Chem. Phys. 148, 124704 (2018)"
+   },
+   "configuration": "NH3 on a five-fold Ti, N down: the relaxed revPBE-D4 geometry of Shi et al. (2025) (Data_autoSKZCAM, Data/04-Molecule_Surface/a-TiO2/NH3), placed relative to a five-fold Ti."
+  }
+ ]
+}

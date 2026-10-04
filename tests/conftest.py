@@ -502,3 +502,65 @@ def gmtkn55_dataset(tmp_path: Path) -> Path:
             if unpaired:
                 archive.writestr(f"{root}/{key}/.UHF", f"{unpaired}\n")
     return path
+
+
+@pytest.fixture
+def adsorption_dataset(tmp_path: Path) -> Path:
+    """A dataset in the format of the Adsorption benchmark, with metals and molecules that EMT describes.
+
+    Pt(111) and Ni(100) three-layer slabs (bottom layer fixed); ``T-1`` H2 dissociating on Pt(111) (two H atoms
+    per reaction, each on its own slab), ``T-2`` CO on top of Pt(111), ``T-3`` NO dissociating on Ni(100) into
+    separate N and O adlayers, ``T-4`` (subset Surf13) O2 dissociating on Cu(100). The reference energies are
+    made up.
+    """
+    import json
+
+    def slab(crystal: str, facet: str) -> dict:
+        return {"crystal": crystal, "facet": facet, "size": [2, 2], "layers": 3, "fixed_layers": 1}
+
+    def on(site: str, symbols: list[str], positions: list[list[float]]) -> list[dict]:
+        return [{"anchor": {"site": site}, "symbols": symbols, "positions": positions}]
+
+    def reaction(id_: str, subset: str, terms: dict, adsorbates: int, energy: float) -> dict:
+        return {
+            "id": id_,
+            "subset": subset,
+            "category": "chemisorption",
+            "mixed": False,
+            "equation": id_,
+            "terms": terms,
+            "adsorbates_per_reaction": adsorbates,
+            "reference": {"energy": energy},
+            "configuration": "",
+        }
+
+    dataset = {
+        "crystals": {
+            "Pt": {"lattice": "fcc", "symbols": ["Pt"], "a": 3.92},
+            "Ni": {"lattice": "fcc", "symbols": ["Ni"], "a": 3.52},
+            "Cu": {"lattice": "fcc", "symbols": ["Cu"], "a": 3.61},
+        },
+        "slabs": {"Pt(111)": slab("Pt", "111"), "Ni(100)": slab("Ni", "100"), "Cu(100)": slab("Cu", "100")},
+        "molecules": {
+            "H2": {"symbols": ["H", "H"], "positions": [[0, 0, 0], [0, 0, 0.74]], "multiplicity": 1},
+            "CO": {"symbols": ["C", "O"], "positions": [[0, 0, 0], [0, 0, 1.13]], "multiplicity": 1},
+            "NO": {"symbols": ["N", "O"], "positions": [[0, 0, 0], [0, 0, 1.15]], "multiplicity": 2},
+            "O2": {"symbols": ["O", "O"], "positions": [[0, 0, 0], [0, 0, 1.21]], "multiplicity": 3},
+        },
+        "adsorbed": {
+            "H/Pt(111)": {"slab": "Pt(111)", "adsorbates": on("fcc", ["H"], [[0, 0, 1.0]])},
+            "CO/Pt(111)": {"slab": "Pt(111)", "adsorbates": on("ontop", ["C", "O"], [[0, 0, 1.85], [0, 0, 3.0]])},
+            "N/Ni(100)": {"slab": "Ni(100)", "adsorbates": on("hollow", ["N"], [[0, 0, 0.6]])},
+            "O/Ni(100)": {"slab": "Ni(100)", "adsorbates": on("hollow", ["O"], [[0, 0, 0.8]])},
+            "O/Cu(100)": {"slab": "Cu(100)", "adsorbates": on("hollow", ["O"], [[0, 0, 0.8]])},
+        },
+        "reactions": [
+            reaction("T-1", "ADS41", {"H/Pt(111)": 2, "Pt(111)": -2, "H2": -1}, 2, -0.8),
+            reaction("T-2", "ADS41", {"CO/Pt(111)": 1, "Pt(111)": -1, "CO": -1}, 1, -1.3),
+            reaction("T-3", "ADS41", {"N/Ni(100)": 1, "O/Ni(100)": 1, "Ni(100)": -2, "NO": -1}, 2, -3.1),
+            reaction("T-4", "Surf13", {"O/Cu(100)": 2, "Cu(100)": -2, "O2": -1}, 2, -2.0),
+        ],
+    }
+    path = tmp_path / "adsorption.json"
+    path.write_text(json.dumps(dataset))
+    return path

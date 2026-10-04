@@ -1,7 +1,8 @@
 """Relaxations and single points with an ASE calculator, one structure at a time.
 
 This reproduces what upstream matcalc does (``RelaxCalc`` + ``backend._ase.run_ase``): ASE's FIRE
-optimizer acting on a ``FrechetCellFilter``, so that atoms and cell relax together.
+optimizer acting on a ``FrechetCellFilter``, so that atoms and cell relax together. Relaxations in a
+fixed cell (slabs, molecules in a box) run FIRE on the atoms alone.
 """
 
 from __future__ import annotations
@@ -57,21 +58,30 @@ class ASESimulator:
         max_steps: int,
         fix_symmetry: bool = False,
         symprec: float = 0.01,
+        relax_cell: bool = True,
     ) -> list[RelaxResult]:
         """Relax atoms and cell of every structure with FIRE on a ``FrechetCellFilter``.
 
         Args:
-            structures: Structures to relax.
+            structures: Structures to relax. Constraints of ASE ``Atoms`` (such as ``FixAtoms``) are kept.
             fmax: FIRE stops when every force on atoms and cell is below this (eV/Å).
             max_steps: FIRE gives up after this many steps.
             fix_symmetry: Keep the space group of each structure with ASE's ``FixSymmetry`` constraint.
             symprec: Symmetry tolerance used to find the space group (Å).
+            relax_cell: Relax the cell as well; with ``False`` FIRE moves only the atoms, in the fixed cell.
 
         Returns:
             One ``RelaxResult`` per structure, in input order.
         """
         return [
-            self._relax_one(structure, fmax=fmax, max_steps=max_steps, fix_symmetry=fix_symmetry, symprec=symprec)
+            self._relax_one(
+                structure,
+                fmax=fmax,
+                max_steps=max_steps,
+                fix_symmetry=fix_symmetry,
+                symprec=symprec,
+                relax_cell=relax_cell,
+            )
             for structure in tqdm(structures, desc="relax", disable=not self.show_progress)
         ]
 
@@ -81,7 +91,8 @@ class ASESimulator:
         """Energy, forces and (optionally) stress of every structure.
 
         Args:
-            structures: Structures to evaluate.
+            structures: Structures to evaluate (constraints are ignored: the forces are those of the
+                potential).
             compute_stress: Also compute the stress tensor.
 
         Returns:
@@ -93,21 +104,28 @@ class ASESimulator:
         ]
 
     def _relax_one(
-        self, structure: Structure | Atoms, *, fmax: float, max_steps: int, fix_symmetry: bool, symprec: float
+        self,
+        structure: Structure | Atoms,
+        *,
+        fmax: float,
+        max_steps: int,
+        fix_symmetry: bool,
+        symprec: float,
+        relax_cell: bool,
     ) -> RelaxResult:
         try:
             atoms = to_ase_atoms(structure)
             atoms.calc = self.calculator
             if fix_symmetry:
-                atoms.set_constraint(FixSymmetry(atoms, symprec=symprec))
-            cell_filter = FrechetCellFilter(atoms)
-            optimizer = FIRE(cell_filter, logfile=None)
+                atoms.set_constraint([*atoms.constraints, FixSymmetry(atoms, symprec=symprec)])
+            optimizable = FrechetCellFilter(atoms) if relax_cell else atoms
+            optimizer = FIRE(optimizable, logfile=None)
             optimizer.run(fmax=fmax, steps=max_steps)
-            # FIRE's stopping test on the forces of the filter (atoms and cell)
-            optimizer_converged = bool((cell_filter.get_forces() ** 2).sum(axis=1).max() < fmax**2)
-            forces = atoms.get_forces()
+            # FIRE's stopping test on the forces it moves along (atoms, and the cell with the filter)
+            optimizer_converged = bool((optimizable.get_forces() ** 2).sum(axis=1).max() < fmax**2)
+            forces = atoms.get_forces()  # zero on fixed atoms, as FIRE saw them
             energy = float(atoms.get_potential_energy())
-            stress = atoms.get_stress(voigt=False)
+            stress = atoms.get_stress(voigt=False) if relax_cell else None
         except Exception as exc:  # noqa: BLE001 - one bad structure must not stop a whole benchmark
             logger.warning("Relaxation failed: %s: %s", type(exc).__name__, exc)
             return RelaxResult.failed(f"{type(exc).__name__}: {exc}")
@@ -131,7 +149,7 @@ class ASESimulator:
             atoms = to_ase_atoms(structure)
             atoms.calc = self.calculator
             energy = float(atoms.get_potential_energy())
-            forces = atoms.get_forces()
+            forces = atoms.get_forces(apply_constraint=False)  # the potential's forces, as TorchSim returns them
             stress = atoms.get_stress(voigt=False) if compute_stress else None
         except Exception as exc:  # noqa: BLE001 - one bad structure must not stop a whole benchmark
             logger.warning("Single point failed: %s: %s", type(exc).__name__, exc)

@@ -7,10 +7,10 @@ authors = [
     { name = "Shyue Ping Ong", email = "shyue@nus.edu.sg" },
     { name = "Tsz Wai Ko", email = "t1ko@ucsd.edu" },
 ]
-description = "The MatCalc benchmarks (equilibrium, elasticity, phonon, softening), three Matbench Discovery tasks (discovery, kappa, diatomics) and four molecular benchmarks (noncovalent, conformers, reactions, gmtkn55) for machine-learning interatomic potentials."
+description = "The MatCalc benchmarks (equilibrium, elasticity, phonon, softening), three Matbench Discovery tasks (discovery, kappa, diatomics), four molecular benchmarks (noncovalent, conformers, reactions, gmtkn55) and an adsorption benchmark against experiment (ADS41, Surf13) for machine-learning interatomic potentials."
 readme = "README.md"
 requires-python = ">=3.12"
-keywords = ["benchmark", "interatomic potential", "machine learning", "materials", "phonon", "elasticity"]
+keywords = ["benchmark", "interatomic potential", "machine learning", "materials", "phonon", "elasticity", "adsorption"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -50,7 +50,7 @@ where = ["src"]
 include = ["matcalc", "matcalc.*"]
 
 [tool.setuptools.package-data]
-"matcalc" = ["elemental_refs/*.json.gz", "benchmarks/data/*.json.gz", "py.typed"]
+"matcalc" = ["elemental_refs/*.json.gz", "benchmarks/data/*.json.gz", "benchmarks/data/*.json", "py.typed"]
 
 [build-system]
 requires = ["setuptools>=58.0.3"]
