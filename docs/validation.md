@@ -607,6 +607,8 @@ benzene and cyclohexene on Pt(111):
 | RPBE (Sharada et al.) | 0.327 / +0.219 | 0.767 / +0.767 | | | | |
 | MACE-OMAT-0 (medium) | 1.753 / +0.633 | 0.297 / −0.200 | 0.411 / −0.411 | 0.183 / −0.183 | 8 | 649 s |
 | MACE-MH-1, OC20 head | 0.446 / +0.424 | 0.680 / +0.680 | 0.281 / +0.281 | 0.471 / +0.471 | 3 | 3,497 s |
+| MACE-MH-1, OC20 head + D3(BJ), PBE parameters | 0.353 / +0.140 | 0.139 / +0.111 | 0.126 / +0.121 | 0.243 / +0.243 | 1 | 5,303 s |
+| MACE-MH-1, OC20 head + D3(BJ), RPBE parameters | 0.839 / −0.473 | 0.852 / −0.852 | 0.101 / −0.038 | 0.397 / −0.397 | 1 | 5,429 s |
 
 All relaxations converged, except that of N2O on MgO(001) with the OC20 head (1000 steps; the molecule slides over
 the flat surface). Run a second time, with other runs sharing the CPU, MACE-OMAT-0 gives the same reaction energies
@@ -616,19 +618,32 @@ MACE-OMAT-0, and MACE-MH-1 with its OMat head (`omat_pbe`, run on the seven reac
 off Ni and Co: the O2 dissociations on Ni(111) and Ni(100) come out at +6.1 eV (MACE-MH-1: +5.3 to +5.5 eV) instead
 of −5.0 and −5.5 eV, the O atoms 4.5–4.9 Å from where they started, and CO on Co(0001) and Ni(111) and the
 dissociated NO on Ni(100) come out 0.9–4.4 eV above experiment; H2 on Ni, without O, is fine. The same network with
-its OC20 head keeps every O atom in place (within 0.2 Å). The cause is the training data, not the benchmark:
-OMat24, like the Materials Project, computes structures that hold O and Co or Ni with GGA+U and the metals with
-GGA, two energy scales, and a potential trained on both puts an O adatom on Ni on the GGA+U one, as if it were NiO.
-`displacement` flags these reactions (5 of the 8 that moved with MACE-OMAT-0).
+its OC20 head keeps every O atom in place (within 0.2 Å). The cause lies in the training data, not in the
+benchmark. A likely mechanism: OMat24, like the Materials Project, computes structures that hold O and Co or Ni
+with GGA+U and the metals with GGA, two energy scales, and a potential trained on both can treat an O adatom on Ni
+like NiO. `displacement` flags these reactions (5 of the 8 that moved with MACE-OMAT-0).
 
 Trained on bulk crystals only, MACE-OMAT-0 also binds CO 0.6–0.9 eV more strongly than PBE on the other metals, and
 the physisorbed molecules about as strongly as PBE+D3 (within 0.16 eV on average for the 13 dispersion-dominated
 reactions that Araujo et al. computed), although it has no dispersion term.
 
-The OC20 head follows RPBE, the functional of OC20, rather than PBE: its chemisorption energies are within 0.25 eV
-of Sharada et al.'s RPBE ones on average (0.14 eV without O2 and NO on Ni) and 0.62 eV of their PBE ones. Like
-RPBE, it hardly binds the dispersion-dominated molecules (ME +0.68 eV), and it underbinds all 13 molecules on the
-oxides and the O adatoms on Ni (the two O2 dissociations by 1.9 eV against PBE, 1.4 eV against RPBE).
+The energies of the OC20 head are closer to Sharada et al.'s RPBE values than to their PBE ones, although its model
+card gives PBE as its level of theory: its chemisorption energies are within 0.25 eV of the RPBE ones on average
+(0.14 eV without O2 and NO on Ni) and 0.62 eV of the PBE ones. Without a dispersion term it hardly binds the
+dispersion-dominated molecules (ME +0.68 eV), and it underbinds all 13 molecules on the oxides and the O adatoms on
+Ni (the two O2 dissociations by 1.9 eV against PBE, 1.4 eV against RPBE).
+
+**With D3.** D3(BJ) added to the OC20 head (torch-dftd; `run_one.py --d3 pbe` or `--d3 rpbe`) binds the
+dispersion-dominated molecules. With PBE's damping parameters, the MAE against experiment falls to 0.14 eV for them
+(from 0.68 eV), to 0.35 eV for chemisorption and to 0.13 and 0.24 eV on MgO and TiO2. This is not PBE+D3: on Araujo
+et al.'s 25 molecular adsorptions the head with D3 binds 0.42 eV more weakly than their PBE+D3 (ME +0.42 eV), and
+its weaker binding and D3 offset each other against experiment (MAE 0.14 eV there, PBE+D3 0.44 eV). With RPBE's
+damping parameters, whose damping radii are shorter, the same head overbinds all 15 dispersion-dominated reactions
+(by 0.85 eV on average), I2 on Pt(111) by 3.0 eV (−6.22 against −3.24 eV) and naphthalene by 2.6 eV; only the
+molecules on MgO come out well (MAE 0.10 eV). The D3 term alone accounts for this: on the dataset's starting
+geometries, the D3 energy of I2 → 2 I/Pt(111) is −1.20 eV with PBE's parameters and −4.68 eV with RPBE's. The
+damping parameters thus matter at the eV level and must be those of the functional the MLIP was trained on, as
+documented, not as guessed from its energies.
 
 **FIRE or L-BFGS.** The fixed-cell relaxations use FIRE, like every relaxation in matcalc. `optimizer_check.py`
 relaxes the slabs, adsorbed slabs and molecules with L-BFGS instead (ASE's `LBFGS` with its defaults: memory 100,

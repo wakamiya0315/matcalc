@@ -12,7 +12,8 @@ python adsorption_check.py parity [--model medium-omat-0] [--reactions ADS41-02,
     relaxation and the status.
 python adsorption_check.py d3
     torch-dftd's D3(BJ) of PBE (ASE) vs TorchSim's D3DispersionModel with torch-dftd's reference parameters:
-    single points on adsorbed slabs and molecules of the dataset, built on the experimental lattices.
+    single points on adsorbed slabs and molecules of the dataset, built on the experimental lattices; and the D3
+    term alone of a few reaction energies with the damping parameters of PBE and of RPBE.
 """
 
 from __future__ import annotations
@@ -230,6 +231,43 @@ def d3() -> None:
                 f"{float(out['energy'][0]) - energy:+.1e} eV, "
                 f"forces {np.abs(out['forces'].numpy() - forces).max():.1e} eV/A"
             )
+    damping_parameters(bench)
+
+
+def damping_parameters(bench: object) -> None:
+    """The D3 term alone of a few reaction energies, with the damping parameters of PBE and of RPBE, on the
+    starting geometries of the dataset (experimental lattices).
+    """
+    from mace_models import ase_d3
+
+    from matcalc.properties.adsorption import reaction_energy
+    from matcalc.surfaces import add_adsorbates, build_slab
+
+    definitions = bench.definitions  # type: ignore[attr-defined]
+    reactions = {r["id"]: r for r in definitions["reactions"]}
+
+    def structure(name: str) -> object:
+        if name in definitions["molecules"]:
+            return bench._molecule(name)  # type: ignore[attr-defined]  # noqa: SLF001
+        entry = definitions["adsorbed"].get(name)
+        slab = definitions["slabs"][entry["slab"] if entry else name]
+        atoms = build_slab(bench._crystal(slab["crystal"]), slab)  # type: ignore[attr-defined]  # noqa: SLF001
+        return add_adsorbates(atoms, entry["adsorbates"]) if entry else atoms
+
+    print("D3 alone in the reaction energy (eV), damping parameters of PBE / RPBE:")
+    calculators = {xc: ase_d3(xc, device="cpu", dtype="float64") for xc in ("pbe", "rpbe")}
+    for reaction_id in ("ADS41-18", "ADS41-03", "ADS41-35", "ADS41-32", "ADS41-10", "Surf13-01"):
+        terms = reactions[reaction_id]["terms"]
+        values = []
+        for calculator in calculators.values():
+            energies = {}
+            for name in terms:
+                atoms = structure(name)
+                atoms.set_constraint()
+                atoms.calc = calculator
+                energies[name] = atoms.get_potential_energy()
+            values.append(reaction_energy(terms, energies))
+        print(f"  {reaction_id}  {reactions[reaction_id]['equation']:<48s} {values[0]:+.2f} / {values[1]:+.2f}")
 
 
 def main() -> None:

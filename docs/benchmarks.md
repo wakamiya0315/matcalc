@@ -474,12 +474,14 @@ reactions of ADS41, Sharada et al.'s Table II): an MLIP that reproduces such a f
 correction (D3, D4) added to it, as the functionals that describe these systems well include one — with ASE's
 `SumCalculator` (for example with torch-dftd's `TorchDFTD3Calculator`), or with TorchSim's `SumModel` and
 `D3DispersionModel`, which needs the D3 reference parameters (those of torch-dftd: `validation/mace_models.py`),
-with the damping parameters of the functional the MLIP was trained on. An MLIP can also bind these molecules
-without describing dispersion: MACE-OMAT-0, trained on PBE energies of bulk crystals, binds them about as strongly
-as PBE+D3. MLIPs trained on Materials Project-compatible data (OMat24, MPtrj), which compute structures that hold O
-and Co, Cr, Fe, Mn, Mo, Ni, V or W with GGA+U and the metals with GGA, can put O atoms on these metals on the GGA+U
-energy scale: with MACE-OMAT-0, and with MACE-MH-1's OMat head, the O atoms of CO, NO and O adatoms leave the Ni
-and Co surfaces ([validation.md](validation.md), section 13), which `displacement` flags.
+with the damping parameters of the functional the MLIP was trained on, as its documentation gives it. The choice
+matters at the eV level: with PBE's and with RPBE's parameters, MACE-MH-1's OC20 head gives −3.13 and −6.22 eV for
+I2 → 2 I/Pt(111) (experiment −3.24 eV). An MLIP can also bind these molecules without describing dispersion:
+MACE-OMAT-0, trained on PBE energies of bulk crystals, binds them about as strongly as PBE+D3. MLIPs trained on
+Materials Project-compatible data (OMat24, MPtrj), which compute structures that hold O and Co, Cr, Fe, Mn, Mo, Ni,
+V or W with GGA+U and the metals with GGA, can fail for O on these metals, probably because they put it on the
+GGA+U energy scale: with MACE-OMAT-0, and with MACE-MH-1's OMat head, the O atoms of CO, NO and O adatoms leave the
+Ni and Co surfaces ([validation.md](validation.md), section 13), which `displacement` flags.
 
 The relaxations of slabs and adsorbed slabs need the fixed-cell mode of the simulators, `relax(...,
 relax_cell=False)`: FIRE on the atoms alone, atoms held by an ASE `FixAtoms` constraint kept in place (TorchSim's
