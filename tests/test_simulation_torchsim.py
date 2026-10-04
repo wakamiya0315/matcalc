@@ -247,6 +247,7 @@ def test_adsorption_benchmark_runs_with_torchsim(adsorption_dataset: Any) -> Non
     assert list(ts_table["status_lj"]) == list(ase_table["status_lj"])
     assert_allclose(ts_table["energy_lj"], ase_table["energy_lj"], rtol=1e-9, atol=1e-8)
     assert_allclose(ts_table["displacement_lj"], ase_table["displacement_lj"], atol=1e-6)
+    assert list(ts_table["rearranged_lj"]) == list(ase_table["rearranged_lj"])
 
 
 def test_charge_and_spin_of_molecules_reach_the_state() -> None:

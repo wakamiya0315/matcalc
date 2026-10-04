@@ -173,6 +173,7 @@ def parity(model: str, reaction_ids: str, device: str | None) -> None:
                 "max |dE| reaction (eV)": float(np.abs(ase["energy_mlip"] - ts["energy_mlip"]).max()),
                 "max |d displacement| (A)": float(np.abs(ase["displacement_mlip"] - ts["displacement_mlip"]).max()),
                 "same status": bool((ase["status_mlip"] == ts["status_mlip"]).all()),
+                "same rearranged": bool((ase["rearranged_mlip"] == ts["rearranged_mlip"]).all()),
                 "relaxations": len(ase_steps),
                 "relaxations with other step counts": sum(
                     a[1] != t[1] for a, t in zip(ase_steps, ts_steps, strict=True)

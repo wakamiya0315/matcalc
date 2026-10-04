@@ -455,18 +455,22 @@ choices follow the reference studies, checked against their figures and structur
 4. **Reaction energy** ΔE = Σ_i c_i E_i (eV) of the reaction as written in the dataset
    (`properties/adsorption.py`); for D2O, H2O is computed.
 
-A relaxation that reaches the step limit still gives a prediction; the status names it (`ok (not converged:
-...)`), including the crystal or slab it was built on. A failed relaxation fails every reaction that uses the
-structure. `displacement` is the largest distance an adsorbate atom moved in the relaxations of the reaction;
-above 1 Å the adsorbate has left its starting configuration (site, orientation, or desorbed, dissociated), which
-the summary counts as `n_moved`. `subsets` selects ADS41 and/or Surf13; `elements` skips reactions with
+A relaxation that reaches the step limit still gives a prediction; the status names it (`ok (not converged: ...)`),
+including the crystal or slab it was built on. A failed relaxation fails every reaction that uses the structure.
+`displacement` is the largest distance a heavy (non-H) adsorbate atom moved in the relaxations of the reaction (for
+adsorbates of H alone, an H atom); above 1 Å the adsorbate has left its starting configuration (another site or
+orientation, desorption), which the summary counts as `n_moved`. H atoms do not count there: they rotate about
+their heavy atom by up to about 1.5 Å while the adsorbate stays (a methyl group, the H of water). `rearranged`
+tells whether a bond between adsorbate atoms broke or formed (bonded: closer than 1.2 times the sum of the covalent
+radii): dissociation, an H atom moving to the surface or to another molecule (a proton hopping within a water
+network counts), counted as `n_rearranged`. `subsets` selects ADS41 and/or Surf13; `elements` skips reactions with
 other elements (status `skipped: ...`).
 
-Columns: `energy_exp`, per model `energy`, `displacement` and `status`, and `subset`, `category`
-(`chemisorption`/`dispersion` for ADS41, `MgO`/`TiO2` for Surf13), `mixed`, `adsorbates` (the adsorbed
-fragments the reaction forms); `formula` is the reaction. Summary: MAE, RMSE and mean signed error ME (eV) over
-all reactions, per subset and per category, the ADS41 errors per adsorbed fragment (the error divided by
-`adsorbates`, the scale of Sharada et al.'s Table III), and the counts.
+Columns: `energy_exp`, per model `energy`, `displacement`, `rearranged` and `status`, and `subset`, `category`
+(`chemisorption`/`dispersion` for ADS41, `MgO`/`TiO2` for Surf13), `mixed`, `adsorbates` (the adsorbed fragments
+the reaction forms); `formula` is the reaction. Summary: MAE, RMSE and mean signed error ME (eV) over all
+reactions, per subset and per category, the ADS41 errors per adsorbed fragment (the error divided by `adsorbates`,
+the scale of Sharada et al.'s Table III), and the counts.
 
 The MLIP is evaluated as given. Functionals without dispersion underbind the dispersion-dominated reactions and the
 physisorbed molecules of Surf13 (PBE by 0.46 eV and RPBE by 0.77 eV on average for the 15 dispersion-dominated

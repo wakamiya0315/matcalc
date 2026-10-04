@@ -195,6 +195,7 @@ def compare(first_file: str, second_file: str) -> None:
         "same status": bool((ta["status_mlip"] == tb["status_mlip"]).all()),
         "MAE vs experiment (eV)": [first["summary"]["all"]["MAE"], second["summary"]["all"]["MAE"]],
         "moved": [first["summary"]["n_moved"], second["summary"]["n_moved"]],
+        "rearranged": [first["summary"]["n_rearranged"], second["summary"]["n_rearranged"]],
         "not converged": [first["summary"]["n_not_converged"], second["summary"]["n_not_converged"]],
     }
     report["seconds"] = [first["seconds"], second["seconds"]]

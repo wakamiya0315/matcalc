@@ -44,7 +44,7 @@ import numpy as np
 import pandas as pd
 
 from matcalc.datasets import sample_subset
-from matcalc.properties.adsorption import adsorbate_displacement, reaction_energy
+from matcalc.properties.adsorption import adsorbate_displacement, adsorbate_rearranged, reaction_energy
 from matcalc.properties.molecules import error_statistics
 from matcalc.structures import molecule_in_box, to_ase_atoms
 from matcalc.surfaces import add_adsorbates, build_slab, bulk_crystal
@@ -66,10 +66,10 @@ DATASET = Path(__file__).parent / "data" / "adsorption.json"
 SUBSETS = ("ADS41", "Surf13")
 """The two sets of reactions."""
 
-QUANTITIES = ("energy", "displacement")
+QUANTITIES = ("energy", "displacement", "rearranged")
 
 MOVED = 1.0
-"""Displacement (Å) of an adsorbate atom above which the summary counts the adsorbate as having left its
+"""Displacement (Å) of a heavy adsorbate atom above which the summary counts the adsorbate as having left its
 starting configuration."""
 
 
@@ -188,8 +188,9 @@ class AdsorptionBenchmark(Benchmark):
             simulator: The simulator of this run.
 
         Returns:
-            Per reaction: ``energy`` (eV), ``displacement`` (largest distance an adsorbate atom moved in the
-            relaxations, Å) and ``status``.
+            Per reaction: ``energy`` (eV), ``displacement`` (largest distance a heavy adsorbate atom moved in
+            the relaxations, Å; H atoms count only for adsorbates of H alone), ``rearranged`` (whether a bond
+            between adsorbate atoms broke or formed) and ``status``.
         """
         predictions: list[dict[str, Any]] = [{} for _ in materials]
         needed: dict[str, None] = {}  # ordered set of the structures of the reactions evaluated
@@ -215,8 +216,9 @@ class AdsorptionBenchmark(Benchmark):
             model_name: The label used in ``run``.
 
         Returns:
-            Counts (``n_not_converged``: with a relaxation that reached the step limit; ``n_moved``: with an
-            adsorbate atom that moved more than ``MOVED`` Å), the errors (MAE, RMSE, mean signed error ME and
+            Counts (``n_not_converged``: with a relaxation that reached the step limit; ``n_moved``: with a
+            heavy adsorbate atom that moved more than ``MOVED`` Å; ``n_rearranged``: with a bond between
+            adsorbate atoms broken or formed), the errors (MAE, RMSE, mean signed error ME and
             number of reactions, eV) of all reactions and per subset and category, the ADS41 errors per
             adsorbed fragment (the error divided by the number of adsorbates the reaction forms, as Sharada et
             al. report them), and the wall time per stage (s).
@@ -225,12 +227,15 @@ class AdsorptionBenchmark(Benchmark):
         ok = status.str.startswith(OK)
         error = pd.to_numeric(table[f"energy_{model_name}"], errors="coerce") - pd.to_numeric(table["energy_exp"])
         moved = pd.to_numeric(table[f"displacement_{model_name}"], errors="coerce") > MOVED
+        # True/False, NaN for reactions without a prediction, or the strings "True"/"False" of a CSV file.
+        rearranged = table[f"rearranged_{model_name}"].astype(str).str.lower().eq("true")
         summary: dict[str, Any] = {
             "n_reactions": len(table),
             "n_ok": int(ok.sum()),
             "n_skipped": int(status.str.startswith("skipped").sum()),
             "n_not_converged": int(status.str.contains("not converged").sum()),
             "n_moved": int((moved & ok).sum()),
+            "n_rearranged": int((rearranged & ok).sum()),
             "all": error_statistics(error[ok]),
         }
         for subset, rows in table.groupby("subset", sort=False):
@@ -330,6 +335,7 @@ class AdsorptionBenchmark(Benchmark):
             structure = outcome[name].structure
             if name in adsorbed and structure is not None:
                 outcome[name].displacement = adsorbate_displacement(start, structure.cart_coords)
+                outcome[name].rearranged = adsorbate_rearranged(start, structure.cart_coords)
 
     def _built_from(self, name: str) -> list[str]:
         """The relaxed structures a structure is built from: crystal (and slab) of slabs and adsorbed slabs."""
@@ -375,6 +381,7 @@ class _Outcome:
         self.converged = converged
         self.error = error
         self.displacement = 0.0
+        self.rearranged = False
 
     @classmethod
     def of(cls, result: RelaxResult) -> _Outcome:
@@ -388,7 +395,7 @@ class _Outcome:
 
 
 def _prediction(terms: Mapping[str, float], relaxed: Sequence[str], outcome: Mapping[str, _Outcome]) -> dict[str, Any]:
-    """Reaction energy, largest adsorbate displacement and status of one reaction.
+    """Reaction energy, largest adsorbate displacement, rearrangement and status of one reaction.
 
     ``relaxed`` names every structure the reaction depends on, crystals and slabs included.
     """
@@ -397,6 +404,7 @@ def _prediction(terms: Mapping[str, float], relaxed: Sequence[str], outcome: Map
             return failed(f"{name}: {outcome[name].error}", QUANTITIES)
     energy = reaction_energy(terms, {name: outcome[name].energy for name in terms})
     displacement = max(outcome[name].displacement for name in terms)
+    rearranged = any(outcome[name].rearranged for name in terms)
     unconverged = [name for name in relaxed if not outcome[name].converged]
     status = OK if not unconverged else f"{OK} (not converged: {', '.join(unconverged)})"
-    return {"energy": energy, "displacement": displacement, "status": status}
+    return {"energy": energy, "displacement": displacement, "rearranged": rearranged, "status": status}

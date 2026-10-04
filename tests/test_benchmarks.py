@@ -540,9 +540,14 @@ def test_adsorption(adsorption_dataset: Path, emt_simulator: ASESimulator) -> No
     by_hand = 2 * (adsorbed.energy - clean.energy) - molecule.energy
     assert table["energy_emt"][0] == pytest.approx(by_hand, abs=1e-6)
 
+    assert table["rearranged_emt"].isin([True, False]).all()
+
     summary = benchmark.summarize(table, "emt")
     assert summary["n_ok"] == 4
     assert summary["all"]["n"] == 4
+    assert summary["n_rearranged"] == int(table["rearranged_emt"].sum())
+    as_text = table.assign(rearranged_emt=["True", "False", "False", "False"])  # as read back from a CSV file
+    assert benchmark.summarize(as_text, "emt")["n_rearranged"] == 1
     assert set(summary["ADS41"]) == {"all", "chemisorption", "per_adsorbate"}
     error = table["energy_emt"] - table["energy_exp"]
     assert summary["ADS41"]["per_adsorbate"]["ME"] == pytest.approx(np.mean(error[:3] / table["adsorbates"][:3]))

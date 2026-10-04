@@ -330,3 +330,50 @@ def test_adsorbate_displacement_follows_the_periodic_boundaries() -> None:
     assert adsorbate_displacement(atoms, moved) == pytest.approx(np.hypot(0.2, 0.2))
     atoms.set_tags(1)
     assert adsorbate_displacement(atoms, moved) == 0.0
+
+
+def test_adsorbate_displacement_counts_heavy_atoms_unless_the_adsorbate_is_hydrogen() -> None:
+    from ase import Atoms
+
+    from matcalc.properties.adsorption import adsorbate_displacement
+
+    hydroxyl = Atoms("CuOH", positions=[[0, 0, 0], [0, 0, 2.0], [0.97, 0, 2.0]], cell=[10, 10, 20], pbc=True)
+    hydroxyl.set_tags([1, 0, 0])
+    moved = hydroxyl.positions.copy()
+    moved[1, 2] += 0.3
+    moved[2] = [-0.97, 0, 2.3]  # the H turns about its O, by 1.97 Å
+    assert adsorbate_displacement(hydroxyl, moved) == pytest.approx(0.3)
+    hydrogen = Atoms("CuH", positions=[[0, 0, 0], [0, 0, 1.5]], cell=[10, 10, 20], pbc=True)
+    hydrogen.set_tags([1, 0])
+    assert adsorbate_displacement(hydrogen, [[0, 0, 0], [1.2, 0, 1.5]]) == pytest.approx(1.2)
+
+
+def test_adsorbate_rearranged_follows_the_bonds_between_adsorbate_atoms() -> None:
+    from ase import Atoms
+
+    from matcalc.properties.adsorption import adsorbate_rearranged
+
+    def adsorbate(symbols: str, xs: list[float]) -> Atoms:
+        """A Cu surface atom (tag 1) under adsorbate atoms on a line at y = 5 Å, z = 3 Å."""
+        atoms = Atoms("Cu" + symbols, positions=[[5, 5, 1], *[[x, 5, 3] for x in xs]], cell=[10, 10, 20], pbc=True)
+        atoms.set_tags([1] + [0] * len(xs))
+        return atoms
+
+    def moved(atoms: Atoms, index: int, x: float) -> np.ndarray:
+        positions = atoms.positions.copy()
+        positions[index, 0] = x
+        return positions
+
+    dimer = adsorbate("OHO", [2.0, 2.97, 4.77])  # O-H 0.97 Å, hydrogen bond H...O 1.80 Å
+    assert not adsorbate_rearranged(dimer, moved(dimer, 3, 5.5))  # the hydrogen bond stretches: no bond changes
+    assert adsorbate_rearranged(dimer, moved(dimer, 2, 3.8))  # the proton hops to the other O
+    across = adsorbate("OH", [9.6, 0.57])  # O-H bonded through the cell boundary
+    assert not adsorbate_rearranged(across, moved(across, 2, 0.67))
+    assert adsorbate_rearranged(across, moved(across, 2, 1.6))  # broken
+    pair = adsorbate("OO", [2.0, 5.0])
+    assert adsorbate_rearranged(pair, moved(pair, 2, 3.3))  # formed
+    lone = adsorbate("OH", [2.0, 2.97])
+    surface = lone.positions.copy()
+    surface[0] = [2.0, 5.0, 0.5]  # bonds to the surface atom do not count
+    assert not adsorbate_rearranged(lone, surface)
+    assert not adsorbate_rearranged(adsorbate("O", [2.0]), moved(adsorbate("O", [2.0]), 1, 9.0))
