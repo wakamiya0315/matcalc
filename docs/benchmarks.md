@@ -450,7 +450,8 @@ choices follow the reference studies, checked against their figures and structur
 3. **Adsorbed slabs**: the adsorbates placed at fixed offsets from their anchor (a site or a surface atom of
    the relaxed slab), relaxed in the fixed cell, the bottom layers still fixed; the **gas-phase molecules**
    relaxed in a 50 Å box (O2 and NO carry their spin multiplicity in `Atoms.info`). All relaxations stop at
-   `fmax` = 0.02 eV/Å (Sharada et al.) or after `max_steps` = 1000 FIRE steps.
+   `fmax` = 0.02 eV/Å (Sharada et al.) or after `max_steps` = 1000 FIRE steps. With L-BFGS instead of FIRE the
+   reaction energies differ by 3 meV on average and 35 meV at most ([validation.md](validation.md), section 13).
 4. **Reaction energy** ΔE = Σ_i c_i E_i (eV) of the reaction as written in the dataset
    (`properties/adsorption.py`); for D2O, H2O is computed.
 

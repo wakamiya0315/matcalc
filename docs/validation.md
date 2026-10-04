@@ -585,6 +585,10 @@ reactions on fcc(111), fcc(100), five-layer Pt(111), MgO(001), rutile and anatas
 the reaction energies within 7e-12 eV, with the same status. On the CPU, shared with another run, TorchSim took 746
 s and ASE 625 s; its batches are meant for a GPU.
 
+On a GPU (TSUBAME4's interactive queue: one H100 MIG 3g.47gb slice shared with other users; MACE-OMAT-0 in float64;
+`optimizer_check.py`), the two simulators take the same FIRE steps in all 111 relaxations of the whole benchmark
+and give the same reaction energies within 3e-10 eV, with the same status. TorchSim took 91 s, ASE 139 s.
+
 TorchSim's `D3DispersionModel` with torch-dftd's reference parameters (`validation/mace_models.py`) gives
 torch-dftd's D3(BJ) energies within 3e-4 eV per adsorbed slab and 4e-7 eV per molecule (`adsorption_check.py
 d3`); most of the difference comes from the coordination numbers, which torch-dftd counts out to 40 Bohr and
@@ -625,3 +629,19 @@ The OC20 head follows RPBE, the functional of OC20, rather than PBE: its chemiso
 of Sharada et al.'s RPBE ones on average (0.14 eV without O2 and NO on Ni) and 0.62 eV of their PBE ones. Like
 RPBE, it hardly binds the dispersion-dominated molecules (ME +0.68 eV), and it underbinds all 13 molecules on the
 oxides and the O adatoms on Ni (the two O2 dissociations by 1.9 eV against PBE, 1.4 eV against RPBE).
+
+**FIRE or L-BFGS.** The fixed-cell relaxations use FIRE, like every relaxation in matcalc. `optimizer_check.py`
+relaxes the slabs, adsorbed slabs and molecules with L-BFGS instead (ASE's `LBFGS` with its defaults: memory 100,
+initial Hessian 70 eV/Å², steps of at most 0.2 Å; TorchSim's `lbfgs` with the same settings), the crystals still
+with FIRE (MACE-OMAT-0, float64, the GPU above). Over the 98 fixed-cell relaxations, L-BFGS needs 2,104 steps
+against FIRE's 5,115 (median 13 against 35; fewer in 92 relaxations; all converge) and never ends more than 1 meV
+above FIRE. It ends lower in 20 relaxations, the soft ones (alkanes, aromatics and CH3OH on Pt(111), the molecules
+on MgO and rutile) by up to 32 meV, and the water bilayer on Pt(111) by 0.21 eV, its molecules moving up to 1.75 Å
+(0.72 Å with FIRE). The reaction energies change by 3 meV on average and by at most 35 meV (water on Pt(111); four
+by more than 10 meV), and the MAE against experiment stays at 1.00 eV. L-BFGS moves the adsorbates further (median
+largest displacement 0.16 Å against 0.13 Å; water on Pt(111) passes the 1 Å mark). TorchSim's `lbfgs` takes ASE's
+steps in 97 of the 98 relaxations, with energies within 4e-5 eV (the other one is the O adatom that leaves Ni: 745
+steps against 259). ASE took 71 s with L-BFGS against 139 s with FIRE; TorchSim took 91 s with either, its batches
+held up by their longest relaxations. The benchmark keeps FIRE: its results hardly depend on the optimizer, FIRE
+stays closer to the prescribed configurations, TorchSim follows ASE exactly with it, and the other benchmarks use
+it.
