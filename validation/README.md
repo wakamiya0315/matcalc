@@ -23,6 +23,7 @@ Discovery, Kappa and Diatomics benchmarks, whose predictions Matbench Discovery 
 | `gmtkn55_check.py` | section 12 | GMTKN55Benchmark given the PBEh-3c energies that the GMTKN55 repository ships, against the repository's published PBEh-3c reaction energies and WTMAD-2. |
 | `matbench_discovery_check.py` | sections 7–8 | Discovery and Kappa runs against Matbench Discovery's published predictions, crystal by crystal; the leaderboard's κ metrics recomputed with matcalc's functions; the packaged κ reference against the published one; MP2020 corrections recomputed with the installed pymatgen. |
 | `adsorption_check.py` | section 13 | The Adsorption references against the published tables (CE39 Table 4, Shi et al.'s enthalpies), a run against the PBE and PBE+D3 energies of the same reactions (Sharada et al. Table II, Araujo et al. Table 3), ASE vs TorchSim on 11 reactions (energies, FIRE steps, status), and torch-dftd's D3 vs TorchSim's. |
+| `optimizer_check.py` | section 13 | FIRE vs L-BFGS for the fixed-cell relaxations of the Adsorption benchmark, with ASE (`LBFGS`) and TorchSim (`lbfgs` with ASE's settings): one run per backend and optimizer, every relaxation recorded, and the comparison of two runs. |
 
 Example (a V4-sized subset):
 
@@ -78,4 +79,8 @@ PYTHONPATH=/path/to/main/src python run_one.py fork-ase adsorption --model mh-1 
 python adsorption_check.py dft mh1-oc20.csv
 PYTHONPATH=/path/to/main/src python adsorption_check.py parity --device cpu
 PYTHONPATH=/path/to/main/src python adsorption_check.py d3
+for b in ase torchsim; do for o in fire lbfgs; do
+    PYTHONPATH=/path/to/main/src python optimizer_check.py run --backend $b --optimizer $o --out $b-$o.json
+done; done
+python optimizer_check.py compare ase-fire.json ase-lbfgs.json
 ```
