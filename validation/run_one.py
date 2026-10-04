@@ -13,17 +13,26 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("code", choices=["upstream", "fork-ase", "fork-torchsim"])
     parser.add_argument("benchmark", choices=["equilibrium", "elasticity", "phonon", "softening", "discovery", "kappa",
-                                              "diatomics", "noncovalent", "conformers", "reactions", "gmtkn55"])
+                                              "diatomics", "noncovalent", "conformers", "reactions", "gmtkn55",
+                                              "adsorption"])
     parser.add_argument("--model", default="mace-matpes-pbe-0",
-                        help="MACE checkpoint (medium = MACE-MP-0, off-medium = MACE-OFF23 medium)")
+                        help="MACE checkpoint (medium = MACE-MP-0, off-medium = MACE-OFF23 medium, "
+                             "medium-omat-0 = MACE-OMAT-0, mh-1 = MACE-MH-1)")
+    parser.add_argument("--head", default=None, help="head of a multi-head model (e.g. oc20_usemppbe of mh-1)")
+    parser.add_argument("--d3", nargs="?", const="pbe", default=None, choices=["pbe", "rpbe"],
+                        help="add the D3(BJ) dispersion correction with the parameters of this functional "
+                             "(default with --d3: pbe)")
+    parser.add_argument("--device", default=None, choices=["cuda", "cpu"], help="default: CUDA when available")
     parser.add_argument("--n-samples", type=int, default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", required=True)
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--dtype", default="float64", choices=["float64", "float32"])
     parser.add_argument("--workers", type=int, default=1)
-    parser.add_argument("--max-steps", type=int, default=None, help="phonon: maximum FIRE steps")
+    parser.add_argument("--max-steps", type=int, default=None, help="phonon, adsorption: maximum FIRE steps")
     parser.add_argument("--shard", default=None, help="discovery: k/n, run only the k-th of n shards (k = 0..n-1)")
+    parser.add_argument("--elements", default=None,
+                        help="adsorption and the molecular benchmarks: skip what has other elements (comma-separated)")
     parser.add_argument("--neutral-closed-shell", action="store_true",
                         help="gmtkn55: only reactions of neutral closed-shell molecules")
     args = parser.parse_args()
@@ -63,7 +72,7 @@ def main() -> None:
         from mace_models import load_mace
 
         backend = "torchsim" if args.code == "fork-torchsim" else "ase"
-        model = load_mace(backend, model=args.model, dtype=args.dtype)
+        model = load_mace(backend, model=args.model, dtype=args.dtype, device=args.device, head=args.head, d3=args.d3)
         simulator = (TorchSimSimulator(model, show_progress=False) if backend == "torchsim"
                      else matcalc.ASESimulator(model, show_progress=False))
         options = {} if args.max_steps is None else {"max_steps": args.max_steps}
@@ -75,6 +84,8 @@ def main() -> None:
             from mace_models import MACE_OFF_ELEMENTS
 
             options["elements"] = MACE_OFF_ELEMENTS  # the other complexes are skipped, as in MLIPAudit
+        if args.elements is not None:
+            options["elements"] = tuple(args.elements.split(","))
         bench = matcalc.BENCHMARKS[args.benchmark](
             n_samples=args.n_samples, seed=args.seed, workers=args.workers, **options
         )
@@ -90,11 +101,12 @@ def main() -> None:
         for column in [c for c in table.columns if c.startswith("energies_")]:
             table[column] = [json.dumps(v) if isinstance(v, list) else v for v in table[column]]
     table.to_csv(args.out, index=False)
-    info = {"code": args.code, "model": args.model, "dtype": args.dtype, "workers": args.workers, "max_steps": args.max_steps,
-            "shard": args.shard,
+    cuda = torch.cuda.is_available() and args.device != "cpu"
+    info = {"code": args.code, "model": args.model, "head": args.head, "d3": args.d3, "dtype": args.dtype,
+            "workers": args.workers, "max_steps": args.max_steps, "shard": args.shard,
             "benchmark": args.benchmark, "n": len(table), "setup_s": round(loaded - start, 1),
-            "run_s": round(end - loaded, 1), "gpu": torch.cuda.get_device_name(0),
-            "peak_gpu_mem_GiB": round(torch.cuda.max_memory_allocated() / 2**30, 2), **extra}
+            "run_s": round(end - loaded, 1), "gpu": torch.cuda.get_device_name(0) if cuda else None,
+            "peak_gpu_mem_GiB": round(torch.cuda.max_memory_allocated() / 2**30, 2) if cuda else None, **extra}
     Path(args.out).with_suffix(".json").write_text(json.dumps(info, indent=1, default=str))
     print(json.dumps(info, default=str))
 

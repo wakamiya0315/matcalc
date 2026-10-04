@@ -3,7 +3,8 @@
 Scripts behind [docs/validation.md](../docs/validation.md). They were run on TSUBAME4 (NVIDIA H100, MIG
 3g.47gb slice) with MACE-MatPES-PBE-0 in float64 as the test model, MACE-MP-0 (`--model medium`) for the
 Discovery, Kappa and Diatomics benchmarks, whose predictions Matbench Discovery publishes, and MACE-OFF23
-(`--model off-medium`) for the molecular benchmarks, whose results MLIPAudit publishes. Each run selects the code under test with
+(`--model off-medium`) for the molecular benchmarks, whose results MLIPAudit publishes; the Adsorption runs
+(MACE-OMAT-0 and MACE-MH-1) on a laptop CPU (`--device cpu`). Each run selects the code under test with
 `PYTHONPATH=<checkout>/src`: a checkout of `upstream-main` (upstream matcalc) or of `main` (this fork).
 
 | Script | Step | What it does |
@@ -13,7 +14,7 @@ Discovery, Kappa and Diatomics benchmarks, whose predictions Matbench Discovery 
 | `run_one.py` | V4, V5 | One benchmark with `upstream`, `fork-ase` or `fork-torchsim`; writes the table (CSV) and timings (JSON). |
 | `compare.py` | V4, V5 | Per-material agreement of two tables against the tolerances (K, G 1 GPa; C_V 0.5 J/(K·mol); E_form 5 meV/atom; d 0.01; softening scale 0.01) and the NaN pattern. |
 | `tsubame_run_v5.sh` | V5 | The `qsub` job script (one benchmark, one code path, on a `gpu_h` node). |
-| `mace_models.py` | all | The test model: MACE-MatPES-PBE-0 as an ASE calculator or a TorchSim model from the same checkpoint (not part of matcalc). |
+| `mace_models.py` | all | The test model: MACE-MatPES-PBE-0 as an ASE calculator or a TorchSim model from the same checkpoint (not part of matcalc), optionally a head of a multi-head model and a D3(BJ) correction (torch-dftd for ASE, TorchSim's `D3DispersionModel` with torch-dftd's parameters). |
 | `phonon_dft_check.py` | V12 | The Phonon benchmark's phonopy step fed with the DFT forces of Alexandria's files: how well it gives back the DFT heat capacities and stability. |
 | `v17_phonon_symmetry.py` | V17 | The Phonon benchmark on a subset in three settings (as before 2026-09-28, the default that subtracts the residual forces, `use_symmetry=False`) for one MLIP, loaded by a `module:function` given on the command line, and the comparison of the three tables. |
 | `diatomics_curves.py` | section 9 | Diatomic curves of a MACE model (ASE or TorchSim) in Matbench Discovery's prediction format, compared point by point with its published curves. |
@@ -21,6 +22,7 @@ Discovery, Kappa and Diatomics benchmarks, whose predictions Matbench Discovery 
 | `tsubame_discovery_shards.sh`, `merge_shards.py` | — | The whole Discovery benchmark as a TSUBAME job array of four shards (one `gpu_h` slice each), and the join of their tables with the metrics of the whole run. |
 | `gmtkn55_check.py` | section 12 | GMTKN55Benchmark given the PBEh-3c energies that the GMTKN55 repository ships, against the repository's published PBEh-3c reaction energies and WTMAD-2. |
 | `matbench_discovery_check.py` | sections 7–8 | Discovery and Kappa runs against Matbench Discovery's published predictions, crystal by crystal; the leaderboard's κ metrics recomputed with matcalc's functions; the packaged κ reference against the published one; MP2020 corrections recomputed with the installed pymatgen. |
+| `adsorption_check.py` | section 13 | The Adsorption references against the published tables (CE39 Table 4, Shi et al.'s enthalpies), a run against the PBE and PBE+D3 energies of the same reactions (Sharada et al. Table II, Araujo et al. Table 3), ASE vs TorchSim on 11 reactions (energies, FIRE steps, status), and torch-dftd's D3 vs TorchSim's. |
 
 Example (a V4-sized subset):
 
@@ -61,4 +63,19 @@ results, then MACE-OFF23 on the reactions of its elements (and of neutral closed
 PYTHONPATH=/path/to/main/src python gmtkn55_check.py
 PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim gmtkn55 --model off-medium --out gmtkn55.csv
 PYTHONPATH=/path/to/main/src python run_one.py fork-torchsim gmtkn55 --model off-medium --neutral-closed-shell --out gmtkn55_neutral.csv
+```
+
+Adsorption (CPU; `mh-1` is MACE-MH-1, `oc20_usemppbe` its head trained on OC20; `--d3 pbe` or `--d3 rpbe` adds
+D3(BJ) with the damping parameters of that functional):
+
+```bash
+PYTHONPATH=/path/to/main/src python adsorption_check.py references
+PYTHONPATH=/path/to/main/src python run_one.py fork-ase adsorption --model medium-omat-0 --dtype float32 --device cpu --out omat0.csv
+PYTHONPATH=/path/to/main/src python run_one.py fork-ase adsorption --model mh-1 --head oc20_usemppbe --dtype float32 --device cpu --out mh1-oc20.csv
+PYTHONPATH=/path/to/main/src python run_one.py fork-ase adsorption --model mh-1 --head oc20_usemppbe --d3 pbe --dtype float32 --device cpu --out mh1-oc20-d3.csv
+PYTHONPATH=/path/to/main/src python run_one.py fork-ase adsorption --model mh-1 --head oc20_usemppbe --d3 rpbe --dtype float32 --device cpu --out mh1-oc20-d3rpbe.csv
+PYTHONPATH=/path/to/main/src python run_one.py fork-ase adsorption --model mh-1 --head omat_pbe --elements Co,Ni,C,H,N,O --dtype float32 --device cpu --out mh1-omat-nico.csv
+python adsorption_check.py dft mh1-oc20.csv
+PYTHONPATH=/path/to/main/src python adsorption_check.py parity --device cpu
+PYTHONPATH=/path/to/main/src python adsorption_check.py d3
 ```

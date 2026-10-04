@@ -1,9 +1,10 @@
 """The MACE test models of the validation runs (not part of matcalc).
 
 matcalc benchmarks whatever ASE calculator or TorchSim model the user passes. The validation runs of this
-fork use MACE-MatPES-PBE-0 (MACE-MP-0 and MACE-OFF23 where published results of those models exist); this
-module builds them for both paths from the same checkpoint file, so the ASE and the TorchSim runs evaluate
-exactly the same potential. Needs mace-torch (and torch-sim).
+fork use MACE-MatPES-PBE-0 (MACE-MP-0 and MACE-OFF23 where published results of those models exist; MACE-OMAT-0
+and MACE-MH-1 for the Adsorption benchmark); this module builds them for both paths from the same checkpoint
+file, so the ASE and the TorchSim runs evaluate exactly the same potential, optionally with a D3 dispersion
+correction. Needs mace-torch (and torch-sim; torch-dftd for D3).
 """
 
 from __future__ import annotations
@@ -24,18 +25,33 @@ Discovery results are published, used to validate the Discovery benchmark. ``"of
 MACE_OFF_ELEMENTS = ("H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I")
 """The elements of MACE-OFF23."""
 
+D3_BJ = {"pbe": {"a1": 0.4289, "s8": 0.7875, "a2": 4.4407}, "rpbe": {"a1": 0.1820, "s8": 0.8318, "a2": 4.0094}}
+"""Grimme's D3(BJ) damping parameters (``a2`` in Bohr) of PBE and RPBE, for TorchSim's ``D3DispersionModel``
+(torch-dftd has the same)."""
+
 
 def load_mace(
-    backend: Literal["ase", "torchsim"], *, model: str = MODEL, dtype: str = "float64", device: str | None = None
+    backend: Literal["ase", "torchsim"],
+    *,
+    model: str = MODEL,
+    dtype: str = "float64",
+    device: str | None = None,
+    head: str | None = None,
+    d3: str | None = None,
 ) -> Any:
     """A MACE foundation model (default MACE-MatPES-PBE-0) as an ASE calculator or as a TorchSim model.
 
     Args:
         backend: ``"ase"`` or ``"torchsim"``.
-        model: Name of the checkpoint for ``mace_mp`` (e.g. ``"mace-matpes-pbe-0"``, ``"medium"``), or
-            ``"off-<size>"`` for MACE-OFF23 (``"off-small"``, ``"off-medium"``, ``"off-large"``).
+        model: Name of the checkpoint for ``mace_mp`` (e.g. ``"mace-matpes-pbe-0"``, ``"medium"``,
+            ``"medium-omat-0"``, ``"mh-1"``), or ``"off-<size>"`` for MACE-OFF23 (``"off-small"``,
+            ``"off-medium"``, ``"off-large"``).
         dtype: ``"float64"`` or ``"float32"``.
         device: ``"cuda"`` or ``"cpu"`` (default: CUDA when available).
+        head: Head of a multi-head model (e.g. ``"oc20_usemppbe"`` of MACE-MH-1); default: the model's own.
+        d3: Add Grimme's D3(BJ) dispersion correction with the damping parameters of this functional
+            (``"pbe"``, ``"rpbe"``): torch-dftd's ``TorchDFTD3Calculator`` (its default cutoffs) for ASE,
+            TorchSim's ``D3DispersionModel`` with torch-dftd's reference parameters for TorchSim.
 
     Returns:
         The calculator or the TorchSim model.
@@ -46,10 +62,17 @@ def load_mace(
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     off_size = model.removeprefix("off-") if model.startswith("off-") else None
+    heads = {} if head is None else {"head": head}
     if backend == "ase":
         if off_size is not None:
-            return mace_off(model=off_size, device=device, default_dtype=dtype)
-        return mace_mp(model=model, device=device, default_dtype=dtype)
+            calculator = mace_off(model=off_size, device=device, default_dtype=dtype)
+        else:
+            calculator = mace_mp(model=model, device=device, default_dtype=dtype, **heads)
+        if not d3:
+            return calculator
+        from ase.calculators.mixing import SumCalculator
+
+        return SumCalculator([calculator, ase_d3(d3, device=device, dtype=dtype)])
     from torch_sim.models.mace import MaceModel
 
     if off_size is not None:
@@ -58,11 +81,54 @@ def load_mace(
             mace_off(model=off_size, device="cpu")  # downloads it into MACE's cache
     else:
         checkpoint = Path(download_mace_mp_checkpoint(model))
-    return MaceModel(
+    mace = MaceModel(
         model=str(checkpoint),
         device=torch.device(device),
         dtype=getattr(torch, dtype),
         neighbor_list_fn=GrowingNeighborList() if device == "cuda" else None,
+        **heads,
+    )
+    if not d3:
+        return mace
+    from torch_sim.models.interface import SumModel
+
+    return SumModel(mace, torchsim_d3(d3, device=device, dtype=dtype))
+
+
+def ase_d3(functional: str = "pbe", *, device: str, dtype: str) -> Any:
+    """torch-dftd's D3(BJ) correction of a functional as an ASE calculator, with its default cutoffs (95 Bohr;
+    40 Bohr for the coordination numbers).
+    """
+    from torch_dftd.torch_dftd3_calculator import TorchDFTD3Calculator
+
+    return TorchDFTD3Calculator(device=device, damping="bj", xc=functional, dtype=getattr(torch, dtype))
+
+
+def torchsim_d3(functional: str = "pbe", *, device: str, dtype: str) -> Any:
+    """TorchSim's D3(BJ) correction of a functional (``D3DispersionModel``), with torch-dftd's reference
+    parameters.
+
+    torch-dftd keeps the C6 coefficients and the coordination numbers of the reference pairs in one array (C6,
+    CN of the first, CN of the second atom); the coordination numbers of the second atom are those of the
+    first with the pair swapped, so the first two are all TorchSim needs. TorchSim counts neighbours for the
+    coordination numbers out to the D3 cutoff (95 Bohr), torch-dftd out to 40 Bohr: the two give the same
+    dispersion energies within 0.3 meV per adsorbed slab of the Adsorption benchmark, within 6e-5 eV with
+    torch-dftd's ``cnthr`` raised to 95 Bohr.
+    """
+    import numpy as np
+    import torch_dftd
+    from nvalchemiops.torch.interactions.dispersion import D3Parameters
+    from torch_sim.models.dispersion import D3DispersionModel
+
+    raw = np.load(Path(torch_dftd.__file__).parent / "nn" / "params" / "dftd3_params.npz")
+    parameters = D3Parameters(
+        rcov=torch.tensor(raw["rcov"]),
+        r4r2=torch.tensor(raw["r2r4"]),
+        c6ab=torch.tensor(raw["c6ab"][..., 0]),
+        cn_ref=torch.tensor(raw["c6ab"][..., 1]),
+    ).to(device=device)
+    return D3DispersionModel(
+        **D3_BJ[functional], d3_params=parameters, device=torch.device(device), dtype=getattr(torch, dtype)
     )
 
 

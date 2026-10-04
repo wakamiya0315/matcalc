@@ -3,11 +3,11 @@
 How the refactored code and the TorchSim simulator were checked, and how fast they are. The MLIP of the
 runs is MACE-MatPES-PBE-0 in float64, used only as a test model (it is not part of matcalc; see
 `validation/mace_models.py`); sections 7–9 use MACE-MP-0 instead, whose predictions Matbench Discovery
-publishes material by material, and sections 10–12 MACE-OFF23, whose results MLIPAudit publishes system by
-system. Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU cores
-(`gpu_h`); quick checks on the shared interactive node. Software: torch 2.14.0+cu126, torch-sim-atomistic
-0.6.2, moyopy 0.20.0, mace-torch 0.3.16, ase 3.29.0, pymatgen 2026.9.23, phonopy 4.6.0. Scripts are in
-[`validation/`](../validation/).
+publishes material by material, sections 10–12 MACE-OFF23, whose results MLIPAudit publishes system by
+system, and section 13 MACE-OMAT-0 and MACE-MH-1. Hardware: TSUBAME4, NVIDIA H100 MIG 3g.47gb slice with 4 CPU
+cores (`gpu_h`); quick checks on the shared interactive node; section 13 on a laptop CPU. Software: torch
+2.14.0+cu126, torch-sim-atomistic 0.6.2, moyopy 0.20.0, mace-torch 0.3.16, ase 3.29.0, pymatgen 2026.9.23,
+phonopy 4.6.0. Scripts are in [`validation/`](../validation/).
 
 "Upstream `main`" below is materialyzeai/matcalc at `b04715d` (2026-09-09), kept in this fork as the branch
 `upstream-main`.
@@ -549,3 +549,79 @@ batches take 2.6 s, the model's first forward pass about 4 s and the memory prob
 atom, 3 s for the largest molecule, of 72 atoms), which a simulator keeps for its later calls. For MACE-OFF23
 lone atoms in a 50 Å box are not cheap: about 6,000 fit on the slice, and the probe of the smallest molecule
 stops there on running out of memory, so limiting the size of the probe (tried) does not shorten it.
+
+## 13. Adsorption
+
+The dataset of the Adsorption benchmark against the papers it comes from, the fixed-cell relaxations of the two
+simulators against each other, and MACE models as test MLIPs (`validation/adsorption_check.py`,
+`validation/run_one.py`). These runs used a laptop: Apple M5 (10 CPU cores), the ASE simulator, float32 unless
+stated; mace-torch 0.3.16, torch 2.14.1, torch-sim-atomistic 0.6.2, torch-dftd 0.5.3.
+
+**The references.** The 39 ADS41 references that Sharada et al. took from CE39 are Wellendorff et al.'s
+experimental reaction energies minus the PBE zero-point energy change (Tables 4a and 4b, kJ/mol) within the
+rounding of Sharada et al.'s Table I to 0.01 eV (largest difference 0.005 eV); the other two (ethylidyne and
+naphthalene on Pt(111), from Gautier et al.) are Table I's. The 13 Surf13 systems are those of Shi et al.'s SI
+Table 3, with the chemisorbed CO2 on MgO(001) in place of the physisorbed one, and their enthalpies, uncertainties
+and temperatures (SI Table 32) and ΔH (SI Table 30, for the same configurations: the H2O monomer, N2O parallel to
+MgO(001), CO2 tilted on rutile) are the SI's; the references are H_ads − ΔH.
+
+**The structures.** On Shi et al.'s revPBE-D4 bulk lattices, `matcalc.surfaces` builds the slabs of their
+published structures: after an in-plane translation, the atoms of the fixed layers lie within 8.5e-6 Å
+(MgO(001)), 2.4e-5 Å (rutile TiO2(110)) and 3.7e-5 Å (anatase TiO2(101)) of theirs, with the same termination
+and composition. `scripts/build_adsorption_dataset.py` checks this on every build, together with the element
+balance of every reaction and the closest adsorbate–surface contact of every adsorbed structure (1.71–3.11 Å;
+1.47 Å for the C–O bond of the carbonate on MgO), and writes the same file byte for byte when run again. The two
+water networks on Pt(111) are fully hydrogen-bonded (9 hydrogen bonds per 3x3 cell; H···O 1.96–1.97 Å in the
+bilayer, 1.80 Å in the H2O–OH network). With `--images` the script draws every adsorbed structure from above
+and from the side; the drawings were compared by eye with Wellendorff et al.'s SI Fig. S1 and Shi et al.'s SI
+Fig. 4.
+
+**The simulators.** In a fixed cell with fixed atoms (`relax(..., relax_cell=False)`), `TorchSimSimulator` takes
+ASE's FIRE steps: in the tests (Lennard-Jones, rattled Cu(111) slabs with a fixed bottom layer) the same number of
+steps, energies within 1e-9 eV and positions within 1e-7 Å, also when the slabs join a running batch; the fixed
+atoms stay in place (1e-12 Å) and a relaxed slab takes no step. With MACE-OMAT-0 (medium) in float64, on 11
+reactions on fcc(111), fcc(100), five-layer Pt(111), MgO(001), rutile and anatase slabs (34 relaxations;
+`adsorption_check.py parity`), the two simulators take the same number of FIRE steps in every relaxation and give
+the reaction energies within 7e-12 eV, with the same status. On the CPU, shared with another run, TorchSim took 746
+s and ASE 625 s; its batches are meant for a GPU.
+
+TorchSim's `D3DispersionModel` with torch-dftd's reference parameters (`validation/mace_models.py`) gives
+torch-dftd's D3(BJ) energies within 3e-4 eV per adsorbed slab and 4e-7 eV per molecule (`adsorption_check.py
+d3`); most of the difference comes from the coordination numbers, which torch-dftd counts out to 40 Bohr and
+TorchSim out to the full 95 Bohr (with torch-dftd's set to 95 Bohr: within 6e-5 eV). Through the benchmark, the
+two give the same reaction energies within 1e-4 eV.
+
+**MACE models** (`run_one.py fork-ase adsorption --device cpu --dtype float32`; MAE and mean signed error ME in eV
+against experiment; "moved": reactions with an adsorbate atom displaced by more than 1 Å; MACE-MH-1 with its head
+`oc20_usemppbe`, trained on OC20; wall times, the MACE-MH-1 runs sharing the CPU with other runs). PBE and RPBE are
+Sharada et al.'s Table II, computed in CE39's configurations, which differ from the dataset's for water, CH, CH3,
+benzene and cyclohexene on Pt(111):
+
+| | ADS41 chemisorption MAE / ME | ADS41 dispersion MAE / ME | Surf13 MgO MAE / ME | Surf13 TiO2 MAE / ME | moved | time |
+|---|---|---|---|---|---|---|
+| PBE (Sharada et al.) | 0.395 / −0.191 | 0.457 / +0.457 | | | | |
+| RPBE (Sharada et al.) | 0.327 / +0.219 | 0.767 / +0.767 | | | | |
+| MACE-OMAT-0 (medium) | 1.753 / +0.633 | 0.297 / −0.200 | 0.411 / −0.411 | 0.183 / −0.183 | 8 | 649 s |
+| MACE-MH-1, OC20 head | 0.446 / +0.424 | 0.680 / +0.680 | 0.281 / +0.281 | 0.471 / +0.471 | 3 | 3,497 s |
+
+All relaxations converged, except that of N2O on MgO(001) with the OC20 head (1000 steps; the molecule slides over
+the flat surface). Run a second time, with other runs sharing the CPU, MACE-OMAT-0 gives the same reaction energies
+within 5e-4 eV and the same status: in float32 the result depends slightly on how the CPU threads split the sums.
+
+MACE-OMAT-0, and MACE-MH-1 with its OMat head (`omat_pbe`, run on the seven reactions on Ni and Co), drive O atoms
+off Ni and Co: the O2 dissociations on Ni(111) and Ni(100) come out at +6.1 eV (MACE-MH-1: +5.3 to +5.5 eV) instead
+of −5.0 and −5.5 eV, the O atoms 4.5–4.9 Å from where they started, and CO on Co(0001) and Ni(111) and the
+dissociated NO on Ni(100) come out 0.9–4.4 eV above experiment; H2 on Ni, without O, is fine. The same network with
+its OC20 head keeps every O atom in place (within 0.2 Å). The cause is the training data, not the benchmark:
+OMat24, like the Materials Project, computes structures that hold O and Co or Ni with GGA+U and the metals with
+GGA, two energy scales, and a potential trained on both puts an O adatom on Ni on the GGA+U one, as if it were NiO.
+`displacement` flags these reactions (5 of the 8 that moved with MACE-OMAT-0).
+
+Trained on bulk crystals only, MACE-OMAT-0 also binds CO 0.6–0.9 eV more strongly than PBE on the other metals, and
+the physisorbed molecules about as strongly as PBE+D3 (within 0.16 eV on average for the 13 dispersion-dominated
+reactions that Araujo et al. computed), although it has no dispersion term.
+
+The OC20 head follows RPBE, the functional of OC20, rather than PBE: its chemisorption energies are within 0.25 eV
+of Sharada et al.'s RPBE ones on average (0.14 eV without O2 and NO on Ni) and 0.62 eV of their PBE ones. Like
+RPBE, it hardly binds the dispersion-dominated molecules (ME +0.68 eV), and it underbinds all 13 molecules on the
+oxides and the O adatoms on Ni (the two O2 dissociations by 1.9 eV against PBE, 1.4 eV against RPBE).
