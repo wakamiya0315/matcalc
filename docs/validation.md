@@ -587,7 +587,8 @@ s and ASE 625 s; its batches are meant for a GPU.
 
 On a GPU (TSUBAME4's interactive queue: one H100 MIG 3g.47gb slice shared with other users; MACE-OMAT-0 in float64;
 `optimizer_check.py`), the two simulators take the same FIRE steps in all 111 relaxations of the whole benchmark
-and give the same reaction energies within 3e-10 eV, with the same status. TorchSim took 91 s, ASE 139 s.
+and give the same reaction energies within 3e-9 eV, with the same displacements, rearrangement flags and status.
+TorchSim took 90 s, ASE 138 s.
 
 TorchSim's `D3DispersionModel` with torch-dftd's reference parameters (`validation/mace_models.py`) gives
 torch-dftd's D3(BJ) energies within 3e-4 eV per adsorbed slab and 4e-7 eV per molecule (`adsorption_check.py
@@ -596,23 +597,27 @@ TorchSim out to the full 95 Bohr (with torch-dftd's set to 95 Bohr: within 6e-5 
 two give the same reaction energies within 1e-4 eV.
 
 **MACE models** (`run_one.py fork-ase adsorption --device cpu --dtype float32`; MAE and mean signed error ME in eV
-against experiment; "moved": reactions with an adsorbate atom displaced by more than 1 Å; MACE-MH-1 with its head
-`oc20_usemppbe`, trained on OC20; wall times, the MACE-MH-1 runs sharing the CPU with other runs). PBE and RPBE are
-Sharada et al.'s Table II, computed in CE39's configurations, which differ from the dataset's for water, CH, CH3,
-benzene and cyclohexene on Pt(111):
+against experiment; "moved": reactions with a heavy adsorbate atom displaced by more than 1 Å; "rearranged":
+reactions in which a bond between adsorbate atoms broke or formed; MACE-MH-1 with its head `oc20_usemppbe`, trained
+on OC20; wall times of runs made side by side, two CPU threads each). PBE and RPBE are Sharada et al.'s Table II,
+computed in CE39's configurations, which differ from the dataset's for water, CH, CH3, benzene and cyclohexene on
+Pt(111):
 
-| | ADS41 chemisorption MAE / ME | ADS41 dispersion MAE / ME | Surf13 MgO MAE / ME | Surf13 TiO2 MAE / ME | moved | time |
-|---|---|---|---|---|---|---|
-| PBE (Sharada et al.) | 0.395 / −0.191 | 0.457 / +0.457 | | | | |
-| RPBE (Sharada et al.) | 0.327 / +0.219 | 0.767 / +0.767 | | | | |
-| MACE-OMAT-0 (medium) | 1.753 / +0.633 | 0.297 / −0.200 | 0.411 / −0.411 | 0.183 / −0.183 | 8 | 649 s |
-| MACE-MH-1, OC20 head | 0.446 / +0.424 | 0.680 / +0.680 | 0.281 / +0.281 | 0.471 / +0.471 | 3 | 3,497 s |
-| MACE-MH-1, OC20 head + D3(BJ), PBE parameters | 0.353 / +0.140 | 0.139 / +0.111 | 0.126 / +0.121 | 0.243 / +0.243 | 1 | 5,303 s |
-| MACE-MH-1, OC20 head + D3(BJ), RPBE parameters | 0.839 / −0.473 | 0.852 / −0.852 | 0.101 / −0.038 | 0.397 / −0.397 | 1 | 5,429 s |
+| | ADS41 chemisorption MAE / ME | ADS41 dispersion MAE / ME | Surf13 MgO MAE / ME | Surf13 TiO2 MAE / ME | moved | rearranged | time |
+|---|---|---|---|---|---|---|---|
+| PBE (Sharada et al.) | 0.395 / −0.191 | 0.457 / +0.457 | | | | | |
+| RPBE (Sharada et al.) | 0.327 / +0.219 | 0.767 / +0.767 | | | | | |
+| MACE-OMAT-0 (medium) | 1.753 / +0.633 | 0.297 / −0.200 | 0.411 / −0.411 | 0.184 / −0.184 | 6 | 0 | 2,996 s |
+| MACE-MH-1, OC20 head | 0.446 / +0.424 | 0.681 / +0.681 | 0.281 / +0.281 | 0.471 / +0.471 | 3 | 0 | 7,947 s |
+| MACE-MH-1, OC20 head + D3(BJ), PBE parameters | 0.353 / +0.140 | 0.139 / +0.112 | 0.126 / +0.121 | 0.243 / +0.243 | 0 | 0 | 8,777 s |
+| MACE-MH-1, OC20 head + D3(BJ), RPBE parameters | 0.839 / −0.473 | 0.852 / −0.852 | 0.101 / −0.038 | 0.397 / −0.397 | 0 | 1 | 9,163 s |
 
 All relaxations converged, except that of N2O on MgO(001) with the OC20 head (1000 steps; the molecule slides over
-the flat surface). Run a second time, with other runs sharing the CPU, MACE-OMAT-0 gives the same reaction energies
-within 5e-4 eV and the same status: in float32 the result depends slightly on how the CPU threads split the sums.
+the flat surface). No bond between adsorbate atoms broke or formed, except within CH3OH on rutile TiO2(110) with
+RPBE's D3 parameters: an H atom left the molecule (its heavy atoms moved by 0.14 Å). Run once more, each model
+gives the same status and the same reaction energies within 6 meV; the largest differences are on flat energy
+surfaces (C2H6 on Pt(111), benzene on Cu(111) and Ag(111)), where float32 rounding, which depends on how the CPU
+threads split the sums, shifts the point where FIRE stops.
 
 MACE-OMAT-0, and MACE-MH-1 with its OMat head (`omat_pbe`, run on the seven reactions on Ni and Co), drive O atoms
 off Ni and Co: the O2 dissociations on Ni(111) and Ni(100) come out at +6.1 eV (MACE-MH-1: +5.3 to +5.5 eV) instead
@@ -621,7 +626,8 @@ dissociated NO on Ni(100) come out 0.9–4.4 eV above experiment; H2 on Ni, with
 its OC20 head keeps every O atom in place (within 0.2 Å). The cause lies in the training data, not in the
 benchmark. A likely mechanism: OMat24, like the Materials Project, computes structures that hold O and Co or Ni
 with GGA+U and the metals with GGA, two energy scales, and a potential trained on both can treat an O adatom on Ni
-like NiO. `displacement` flags these reactions (5 of the 8 that moved with MACE-OMAT-0).
+like NiO. `displacement` flags these reactions: they are 5 of the 6 that moved with MACE-OMAT-0, the sixth being
+N2O sliding over MgO(001).
 
 Trained on bulk crystals only, MACE-OMAT-0 also binds CO 0.6–0.9 eV more strongly than PBE on the other metals, and
 the physisorbed molecules about as strongly as PBE+D3 (within 0.16 eV on average for the 13 dispersion-dominated
@@ -648,15 +654,18 @@ documented, not as guessed from its energies.
 **FIRE or L-BFGS.** The fixed-cell relaxations use FIRE, like every relaxation in matcalc. `optimizer_check.py`
 relaxes the slabs, adsorbed slabs and molecules with L-BFGS instead (ASE's `LBFGS` with its defaults: memory 100,
 initial Hessian 70 eV/Å², steps of at most 0.2 Å; TorchSim's `lbfgs` with the same settings), the crystals still
-with FIRE (MACE-OMAT-0, float64, the GPU above). Over the 98 fixed-cell relaxations, L-BFGS needs 2,104 steps
+with FIRE (MACE-OMAT-0, float64, the GPU above). Over the 98 fixed-cell relaxations, ASE's L-BFGS needs 2,089 steps
 against FIRE's 5,115 (median 13 against 35; fewer in 92 relaxations; all converge) and never ends more than 1 meV
 above FIRE. It ends lower in 20 relaxations, the soft ones (alkanes, aromatics and CH3OH on Pt(111), the molecules
-on MgO and rutile) by up to 32 meV, and the water bilayer on Pt(111) by 0.21 eV, its molecules moving up to 1.75 Å
-(0.72 Å with FIRE). The reaction energies change by 3 meV on average and by at most 35 meV (water on Pt(111); four
+on MgO and rutile) by up to 32 meV, and the water bilayer on Pt(111) by 0.21 eV, its O atoms moving up to 1.75 Å
+(0.47 Å with FIRE). The reaction energies change by 3 meV on average and by at most 35 meV (water on Pt(111); four
 by more than 10 meV), and the MAE against experiment stays at 1.00 eV. L-BFGS moves the adsorbates further (median
-largest displacement 0.16 Å against 0.13 Å; water on Pt(111) passes the 1 Å mark). TorchSim's `lbfgs` takes ASE's
-steps in 97 of the 98 relaxations, with energies within 4e-5 eV (the other one is the O adatom that leaves Ni: 745
-steps against 259). ASE took 71 s with L-BFGS against 139 s with FIRE; TorchSim took 91 s with either, its batches
-held up by their longest relaxations. The benchmark keeps FIRE: its results hardly depend on the optimizer, FIRE
-stays closer to the prescribed configurations, TorchSim follows ASE exactly with it, and the other benchmarks use
-it.
+`displacement` 0.14 Å against 0.12 Å): CH3OH and the water bilayer on Pt(111) pass the 1 Å mark (1.12 and 1.75 Å;
+0.42 and 0.47 Å with FIRE), so 8 reactions count as moved instead of 6; no bond between adsorbate atoms breaks with
+either. TorchSim's `lbfgs` takes ASE's steps in 97 of the 98 relaxations, with energies within 1e-10 eV. The other
+one, the O adatom that leaves Ni(100) with this model, L-BFGS does not repeat from run to run: ASE's took 259 and
+then 244 steps, TorchSim's 745 steps and then the 1000-step limit, 6.9 eV higher. FIRE gives every relaxation again
+with the same steps, within 6e-9 eV, in both. ASE took 67 s with L-BFGS against 138 s with FIRE; TorchSim took 99
+and 90 s, its batches held up by their longest relaxations. The benchmark keeps FIRE: its results hardly depend on
+the optimizer, FIRE stays closer to the prescribed configurations, repeats exactly and follows ASE exactly in
+TorchSim, and the other benchmarks use it.
