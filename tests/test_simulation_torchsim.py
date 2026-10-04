@@ -122,6 +122,72 @@ def test_structures_joining_a_running_batch_follow_the_same_path() -> None:
         assert_allclose(many.structure.cart_coords, one.structure.cart_coords, atol=1e-7)
 
 
+def adsorbed_slabs() -> list[Any]:
+    """Rattled Cu(111) slabs (one with an adatom on the fcc site) whose bottom layer is fixed."""
+    from ase.build import add_adsorbate, fcc111
+    from ase.constraints import FixAtoms
+
+    slabs = []
+    for seed, adatom in ((0, True), (1, True), (2, False), (3, True)):
+        slab = fcc111("Cu", size=(2, 2, 3), a=3.62, vacuum=6.0)
+        if adatom:
+            add_adsorbate(slab, "Cu", 2.0, "fcc")
+        slab.positions += np.random.default_rng(seed).normal(0.0, 0.05, slab.positions.shape)
+        slab.set_constraint(FixAtoms(indices=[atom.index for atom in slab if atom.tag == 3]))
+        slabs.append(slab)
+    return slabs
+
+
+def test_relax_in_a_fixed_cell_matches_ase_fire() -> None:
+    model = lj_model()
+    starts = adsorbed_slabs()
+    reference = ASESimulator(TorchSimModelCalculator(model), show_progress=False).relax(
+        starts, fmax=0.01, max_steps=300, relax_cell=False
+    )
+    batched = TorchSimSimulator(model, show_progress=False).relax(starts, fmax=0.01, max_steps=300, relax_cell=False)
+    metric = ts.autobatching.calculate_memory_scalers(
+        ts.io.atoms_to_state([to_ase_atoms(s) for s in starts], device=model.device, dtype=model.dtype)
+    )
+    squeezed = TorchSimSimulator(model, max_memory_scaler=2.2 * max(metric), show_progress=False)
+    joined = squeezed.relax(starts, fmax=0.01, max_steps=300, relax_cell=False)
+    for start, ref, got, late in zip(starts, reference, batched, joined, strict=True):
+        fixed = start.constraints[0].get_indices()
+        for result in (got, late):
+            assert result.n_steps == ref.n_steps  # same FIRE without cell filter, same fixed atoms
+            assert result.optimizer_converged == ref.optimizer_converged
+            assert result.energy == pytest.approx(ref.energy, abs=1e-9)
+            assert result.stress is None
+            assert_allclose(result.structure.cart_coords, ref.structure.cart_coords, atol=1e-7)
+            assert_allclose(result.structure.cart_coords[fixed], start.positions[fixed], atol=1e-12)
+            assert_allclose(result.structure.lattice.matrix, start.cell[:], atol=1e-12)
+            assert_allclose(result.forces[fixed], 0.0)
+
+
+def test_fixed_cell_relaxation_of_a_relaxed_slab_takes_no_step() -> None:
+    model = lj_model()
+    (relaxed,) = TorchSimSimulator(model, show_progress=False).relax(
+        adsorbed_slabs()[:1], fmax=0.01, max_steps=300, relax_cell=False
+    )
+    again = adsorbed_slabs()[0]
+    again.positions = relaxed.structure.cart_coords
+    for simulator in (
+        ASESimulator(TorchSimModelCalculator(model), show_progress=False),
+        TorchSimSimulator(model, show_progress=False),
+    ):
+        (result,) = simulator.relax([again], fmax=0.01, max_steps=300, relax_cell=False)
+        assert result.n_steps == 0
+        assert result.optimizer_converged
+
+
+def test_constraints_other_than_fixed_atoms_are_refused() -> None:
+    from ase.constraints import FixBondLength
+
+    slab = adsorbed_slabs()[0]
+    slab.set_constraint(FixBondLength(0, 1))
+    with pytest.raises(NotImplementedError, match="FixAtoms"):
+        TorchSimSimulator(lj_model(), show_progress=False).relax([slab], fmax=0.01, max_steps=5, relax_cell=False)
+
+
 def test_max_steps_is_respected() -> None:
     (result,) = TorchSimSimulator(lj_model(), show_progress=False).relax([rattled("Cu", 5)], fmax=1e-8, max_steps=4)
     assert result.n_steps == 4
@@ -168,6 +234,19 @@ def test_molecular_benchmarks_run_with_torchsim(
         ts_table = make().run(batched, "lj")
         assert (ts_table["status_lj"] == "ok").all()
         assert_allclose(ts_table[f"{column}_lj"], ase_table[f"{column}_lj"], rtol=1e-9, atol=1e-9)
+
+
+def test_adsorption_benchmark_runs_with_torchsim(adsorption_dataset: Any) -> None:
+    from matcalc import AdsorptionBenchmark
+
+    model = lj_model()
+    ase_table = AdsorptionBenchmark(adsorption_dataset).run(
+        ASESimulator(TorchSimModelCalculator(model), show_progress=False), "lj"
+    )
+    ts_table = AdsorptionBenchmark(adsorption_dataset).run(TorchSimSimulator(model, show_progress=False), "lj")
+    assert list(ts_table["status_lj"]) == list(ase_table["status_lj"])
+    assert_allclose(ts_table["energy_lj"], ase_table["energy_lj"], rtol=1e-9, atol=1e-8)
+    assert_allclose(ts_table["displacement_lj"], ase_table["displacement_lj"], atol=1e-6)
 
 
 def test_charge_and_spin_of_molecules_reach_the_state() -> None:

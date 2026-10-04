@@ -3,8 +3,9 @@
 This is a fork of [materialyzeai/matcalc](https://github.com/materialyzeai/matcalc) reduced to its
 four benchmarks for machine-learning interatomic potentials (MLIPs), plus three tasks of
 [Matbench Discovery](https://matbench-discovery.materialsproject.org), three molecular tasks of
-[MLIPAudit](https://github.com/instadeepai/mlipaudit) and the [GMTKN55](https://github.com/grimme-lab/GMTKN55)
-database, which need only relaxations and single points as well:
+[MLIPAudit](https://github.com/instadeepai/mlipaudit), the [GMTKN55](https://github.com/grimme-lab/GMTKN55)
+database and adsorption on metal and oxide surfaces against experiment, which need only relaxations and single
+points as well:
 
 | Benchmark | Compared with the reference | Reference data |
 |---|---|---|
@@ -19,6 +20,7 @@ database, which need only relaxations and single points as well:
 | Conformers | relative energies of the conformers of drug-like molecules (MAE, RMSE in kcal/mol, Spearman correlation) | 6,745 conformers of 693 molecules (Folmsbee and Hutchison, DLPNO-CCSD(T)) |
 | Reactions | barrier heights and reaction energies of elementary organic reactions (MAE, RMSE, mean error in kcal/mol) | 11,926 reactions of RDB7 (CCSD(T)-F12a) |
 | GMTKN55 | main-group thermochemistry, barrier heights and noncovalent interactions (WTMAD-2, MAE per subset in kcal/mol) | 1,505 relative energies of GMTKN55 (mostly CCSD(T)/CBS and W-n) |
+| Adsorption | adsorption energies of molecules on metal and oxide surfaces, in fixed configurations (MAE, RMSE, mean error in eV, per subset and category) | 54 experimental energies: ADS41 (41 on transition metals) and the 13 systems of Surf13 on MgO and TiO2 |
 
 The unmodified upstream code (materialyzeai/matcalc at `b04715d`, 2026-09-09) is kept on the branch
 [`upstream-main`](https://github.com/wakamiya0315/matcalc/tree/upstream-main). Equilibrium,
@@ -56,9 +58,9 @@ print(benchmark.summarize(table, "my-mlip"))
 The Equilibrium, Elasticity and Softening datasets are downloaded from Hugging Face on first use; the
 Phonon and Kappa datasets are part of the package; Discovery and Diatomics download Matbench Discovery's
 Figshare files, Noncovalent and Conformers their files on GitHub (at fixed commits) and Reactions RDB7's
-file on Zenodo and GMTKN55 its GitHub repository (all MD5-checked). `run`
-returns the result table; the checkpoint file keeps all finished rows (including structures), so an
-interrupted run resumes from it. `matcalc.run_benchmarks` runs several benchmarks for several models and
+file on Zenodo and GMTKN55 its GitHub repository (all MD5-checked); the Adsorption dataset is part of the
+package. `run` returns the result table; the checkpoint file keeps all finished rows (including structures), so
+an interrupted run resumes from it. `matcalc.run_benchmarks` runs several benchmarks for several models and
 writes the tables.
 
 Evaluate the MLIP in float64 for the molecular benchmarks: in float32 the rounding of the large total
@@ -137,13 +139,16 @@ src/matcalc/
                 TorchSimSimulator does the same in batches on the GPU
   datasets.py   download and reproducible subsets
   structures.py conversions between pymatgen and ASE; molecules in a periodic box
+  surfaces.py   crystals, slabs and adsorbates placed on them (Adsorption benchmark)
 scripts/        build_phonon_dataset.py: the Phonon dataset from Alexandria's phonopy files;
-                build_kappa_dataset.py: the Kappa dataset from PhononDB's phono3py force sets
+                build_kappa_dataset.py: the Kappa dataset from PhononDB's phono3py force sets;
+                build_adsorption_dataset.py: the Adsorption dataset and its fixed configurations
 validation/     the runs behind docs/validation.md (with MACE as the test model)
 ```
 
 A benchmark only asks its simulator for two operations, `relax(structures, fmax, max_steps)` and
-`single_point(structures)`, always for all materials of a chunk at once.
+`single_point(structures)`, always for all materials of a chunk at once. `relax(..., relax_cell=False)` relaxes
+the atoms alone in a fixed cell (slabs, molecules), atoms held by an ASE `FixAtoms` constraint staying in place.
 
 ## Differences from upstream
 
@@ -155,6 +160,10 @@ Also added: the Noncovalent, Conformers and Reactions benchmarks, MLIPAudit's no
 conformer-selection and reactivity tasks, on the NCI Atlas dissociation curves (CC BY 4.0), the conformers
 of Folmsbee and Hutchison (MIT) and the RDB7 reactions with CCSD(T)-F12a energies (CC BY 4.0), and the
 GMTKN55 benchmark on the GMTKN55 database (CC BY 4.0), downloaded from GitHub and Zenodo on first use.
+And the Adsorption benchmark: ADS41 (Sharada et al. 2019, from CE39 of Wellendorff et al. 2015) and the Surf13
+systems of Shi et al. 2025 with their experimental energies, in configurations fixed from the reference
+studies (the structures of Shi et al., CC BY 4.0; no site search, unlike upstream's `AdsorptionCalc`); for it,
+`relax` gained the fixed-cell mode with fixed atoms in both simulators.
 
 Removed: every calculator the benchmarks do not use (adsorption, EOS, grain boundaries, interfaces,
 LAMMPS, MD, NEB, order, phonon3, QHA, surfaces), `ChainedCalc`, the multi-provider model registry, the
@@ -213,4 +222,7 @@ conformer benchmark, D. L. Folmsbee, G. R. Hutchison, Int. J. Quantum Chem. 121,
 reaction benchmark, K. A. Spiekermann, L. Pattanaik, W. H. Green, Sci. Data 9, 417 (2022), and C. A.
 Grambow, L. Pattanaik, W. H. Green, Sci. Data 7, 137 (2020); for all three, MLIPAudit (L. Wehrhan et al.,
 arXiv:2511.20487); for the GMTKN55 benchmark, L. Goerigk, A. Hansen, C. Bauer, S. Ehrlich, A. Najibi, S.
-Grimme, Phys. Chem. Chem. Phys. 19, 32184 (2017).
+Grimme, Phys. Chem. Chem. Phys. 19, 32184 (2017); for the adsorption benchmark, S. Mallikarjun Sharada, R. K. B.
+Karlsson, Y. Maimaiti, J. Voss, T. Bligaard, Phys. Rev. B 100, 035439 (2019), J. Wellendorff et al., Surf. Sci.
+640, 36 (2015), R. B. Araujo, G. L. S. Rodrigues, E. C. dos Santos, L. G. M. Pettersson, Nat. Commun. 13, 6853
+(2022), and B. X. Shi et al., Nat. Chem. 17, 1688 (2025).

@@ -1,4 +1,4 @@
-"""MatCalc benchmarks: compare a machine-learning interatomic potential (MLIP) with DFT and coupled-cluster data.
+"""MatCalc benchmarks: compare a machine-learning interatomic potential (MLIP) with DFT, coupled cluster, experiment.
 
 The benchmarks (see ``docs/benchmarks.md``):
 
@@ -13,7 +13,8 @@ The benchmarks (see ``docs/benchmarks.md``):
 - ``NoncovalentBenchmark``: interaction energies of noncovalent complexes (NCI Atlas, CCSD(T)/CBS);
 - ``ConformerBenchmark``: relative energies of conformers of drug-like molecules (DLPNO-CCSD(T));
 - ``ReactionBenchmark``: barrier heights and reaction energies of organic reactions (RDB7, CCSD(T)-F12a);
-- ``GMTKN55Benchmark``: main-group thermochemistry, kinetics and noncovalent interactions (GMTKN55, WTMAD-2).
+- ``GMTKN55Benchmark``: main-group thermochemistry, kinetics and noncovalent interactions (GMTKN55, WTMAD-2);
+- ``AdsorptionBenchmark``: adsorption energies on metal and oxide surfaces against experiment (ADS41, Surf13).
 
 Each benchmark asks a *simulator* for relaxations and single points: ``ASESimulator`` works with any
 ASE calculator, ``matcalc.simulation.TorchSimSimulator`` with any TorchSim model. The MLIP itself is
@@ -32,6 +33,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .benchmarks import (
     BENCHMARKS,
+    AdsorptionBenchmark,
     Benchmark,
     ConformerBenchmark,
     DiatomicsBenchmark,
@@ -60,6 +62,7 @@ except PackageNotFoundError:
 __all__ = [
     "BENCHMARKS",
     "ASESimulator",
+    "AdsorptionBenchmark",
     "Benchmark",
     "ConformerBenchmark",
     "DiatomicsBenchmark",

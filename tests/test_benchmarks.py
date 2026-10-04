@@ -503,3 +503,114 @@ def test_gmtkn55_reaction_lines_are_read_as_the_evaluator_reads_them() -> None:
     assert reactions_of(text) == [(["a1", "b1", "c"], [-1.0, -1.0, 2.0], 3.5)]
     with pytest.raises(ValueError, match="added energy"):
         reactions_of("$tmer a/$f x 1 $w 3.5 2.0 1\n")
+
+
+def test_adsorption(adsorption_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from ase.build import bulk, fcc111
+    from ase.constraints import FixAtoms
+
+    from matcalc import AdsorptionBenchmark
+    from matcalc.structures import molecule_in_box
+
+    benchmark = AdsorptionBenchmark(adsorption_dataset)
+    table = benchmark.run(emt_simulator, "emt")
+    assert list(table["reaction"]) == ["T-1", "T-2", "T-3", "T-4"]
+    assert list(table.columns[:4]) == ["reaction", "formula", "energy_exp", "energy_emt"]
+    assert table["status_emt"].str.startswith("ok").all()
+    assert list(table["subset"]) == ["ADS41", "ADS41", "ADS41", "Surf13"]
+    assert list(table["adsorbates"]) == [2, 1, 2, 2]
+
+    # T-1 by hand: the same EMT relaxations of the Pt crystal, the slab, H on fcc and H2 in a box.
+    (crystal,) = emt_simulator.relax([bulk("Pt", "fcc", a=3.92, cubic=True)], fmax=0.02, max_steps=1000)
+    slab = fcc111("Pt", size=(2, 2, 3), a=crystal.structure.lattice.a, vacuum=10.0)
+    slab.pbc = True
+    slab.set_constraint(FixAtoms(indices=[a.index for a in slab if a.tag == 3]))
+    (clean,) = emt_simulator.relax([slab], fmax=0.02, max_steps=1000, relax_cell=False)
+    with_h = slab.copy()
+    with_h.positions = clean.structure.cart_coords
+    fcc = with_h.info["adsorbate_info"]
+    site = np.dot(fcc["sites"]["fcc"], fcc["cell"])
+    top = with_h.positions[with_h.get_tags() == 1]
+    centre = 0.5 * (with_h.cell[0] + with_h.cell[1])[:2]
+    xy = min((atom[:2] + site for atom in top), key=lambda p: np.linalg.norm(p - centre))
+    with_h.append("H")
+    with_h.positions[-1] = [*xy, top[:, 2].mean() + 1.0]
+    h2 = molecule_in_box(["H", "H"], [[0, 0, 0], [0, 0, 0.74]])
+    adsorbed, molecule = emt_simulator.relax([with_h, h2], fmax=0.02, max_steps=1000, relax_cell=False)
+    by_hand = 2 * (adsorbed.energy - clean.energy) - molecule.energy
+    assert table["energy_emt"][0] == pytest.approx(by_hand, abs=1e-6)
+
+    summary = benchmark.summarize(table, "emt")
+    assert summary["n_ok"] == 4
+    assert summary["all"]["n"] == 4
+    assert set(summary["ADS41"]) == {"all", "chemisorption", "per_adsorbate"}
+    error = table["energy_emt"] - table["energy_exp"]
+    assert summary["ADS41"]["per_adsorbate"]["ME"] == pytest.approx(np.mean(error[:3] / table["adsorbates"][:3]))
+    assert summary["Surf13"]["all"]["n"] == 1
+    assert set(summary["timings_s"]) == {"bulk relaxation", "slab relaxation", "adsorbate relaxation"}
+
+
+def test_adsorption_subsets_and_elements(adsorption_dataset: Path, emt_simulator: ASESimulator) -> None:
+    from matcalc import AdsorptionBenchmark
+
+    only_surf13 = AdsorptionBenchmark(adsorption_dataset, subsets=["Surf13"])
+    assert [m.material_id for m in only_surf13.materials] == ["T-4"]
+    assert only_surf13.run_settings() == {"subsets": "Surf13"}
+    without_ni = AdsorptionBenchmark(adsorption_dataset, elements=["Pt", "Cu", "H", "C", "O"])
+    table = without_ni.run(emt_simulator, "emt")
+    assert list(table["status_emt"]) == ["ok", "ok", "skipped: N, Ni not in the elements", "ok"]
+    assert np.isnan(table["energy_emt"][2])
+    with pytest.raises(ValueError, match="Unknown subsets"):
+        AdsorptionBenchmark(adsorption_dataset, subsets=["CE39"])
+
+
+def test_adsorption_failures_reach_every_reaction_of_the_structure(
+    adsorption_dataset: Path, emt_simulator: ASESimulator
+) -> None:
+    from matcalc import AdsorptionBenchmark
+
+    class NoNickel(type(emt_simulator)):
+        def relax(self, structures: Any, **kwargs: Any) -> Any:
+            results = super().relax(structures, **kwargs)
+            for i, s in enumerate(structures):
+                if "Ni" in s.get_chemical_symbols() and len(s) == 4:  # the Ni crystal
+                    results[i] = type(results[i]).failed("RuntimeError: no nickel")
+            return results
+
+    table = AdsorptionBenchmark(adsorption_dataset).run(NoNickel(emt_simulator.calculator, show_progress=False), "emt")
+    reason = "N/Ni(100): relaxation of Ni(100): relaxation of the Ni crystal: RuntimeError: no nickel"
+    assert table["status_emt"][2] == reason
+    assert list(table["status_emt"][[0, 1, 3]]) == ["ok", "ok", "ok"]
+
+
+def test_adsorption_dataset_is_consistent() -> None:
+    """Every reaction of the packaged dataset balances its elements and names structures that exist."""
+    from collections import Counter
+
+    from matcalc import AdsorptionBenchmark
+    from matcalc.surfaces import add_adsorbates, build_slab, bulk_crystal
+
+    benchmark = AdsorptionBenchmark()
+    data = benchmark.definitions
+    reactions = data["reactions"]
+    assert Counter(r["subset"] for r in reactions) == {"ADS41": 41, "Surf13": 13}
+    categories = Counter(r["category"] for r in reactions if r["subset"] == "ADS41")
+    assert categories == {"chemisorption": 26, "dispersion": 15}
+    assert len({r["id"] for r in reactions}) == len(reactions)
+    crystals = {
+        name: bulk_crystal(s["lattice"], s["symbols"], s["a"], s.get("c"), s.get("u"))
+        for name, s in data["crystals"].items()
+    }
+    slabs = {name: build_slab(crystals[s["crystal"]], s) for name, s in data["slabs"].items()}
+    compositions = {name: Counter(slab.get_chemical_symbols()) for name, slab in slabs.items()}
+    compositions |= {name: Counter(m["symbols"]) for name, m in data["molecules"].items()}
+    for name, entry in data["adsorbed"].items():
+        compositions[name] = Counter(add_adsorbates(slabs[entry["slab"]], entry["adsorbates"]).get_chemical_symbols())
+    for reaction in reactions:
+        balance: Counter[str] = Counter()
+        for name, coefficient in reaction["terms"].items():
+            for symbol, count in compositions[name].items():
+                balance[symbol] += coefficient * count
+        assert all(abs(v) < 1e-9 for v in balance.values()), reaction["id"]
+        assert np.isfinite(reaction["reference"]["energy"])
+        assert reaction["reference"]["energy"] < 0

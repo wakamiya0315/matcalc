@@ -4,9 +4,10 @@ The first seven compare a machine-learning interatomic potential (MLIP) with DFT
 Hugging Face dataset [`materialyze/matcalc-bench`](https://huggingface.co/datasets/materialyze/matcalc-bench)
 (Equilibrium, Elasticity, Softening), the packaged Phonon and Kappa datasets, and Matbench Discovery's WBM
 files (Discovery) and dimer curves (Diatomics). The four molecular benchmarks (Noncovalent, Conformers,
-Reactions, GMTKN55) compare it with coupled-cluster-quality energies of molecules.
+Reactions, GMTKN55) compare it with coupled-cluster-quality energies of molecules, and the Adsorption benchmark
+with experimental adsorption energies on metal and oxide surfaces.
 Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å³; moduli are reported in GPa; the
-molecular benchmarks report energies in kcal/mol, as their references do.
+molecular benchmarks report energies in kcal/mol, as their references do, and the Adsorption benchmark in eV.
 
 The molecular benchmarks measure energy differences of a fraction of a kcal/mol to a few kcal/mol between
 structures whose total energies are large when an MLIP's energies include the atomic energies of
@@ -19,7 +20,8 @@ results in float32, such as MLIPAudit's, carry this rounding ([validation.md](va
 
 Every benchmark is a sequence of stages over *all* materials of a chunk, and only two operations touch the
 MLIP: `relax` and `single_point` of a simulator (`src/matcalc/simulation/`). Relaxations use the FIRE
-optimizer on a Frechet cell filter, so atomic positions and the cell relax together. In Equilibrium and
+optimizer on a Frechet cell filter, so atomic positions and the cell relax together (the Adsorption benchmark
+relaxes its slabs and molecules in fixed cells, FIRE on the atoms alone). In Equilibrium and
 Elasticity a relaxation counts as converged when the largest force on any atom is at most `fmax` (the
 residual cell stress is not checked, as in upstream matcalc); the Phonon benchmark requires FIRE's own
 criterion, every force on the atoms and on the cell below `fmax`. Discovery and Kappa, like Matbench
@@ -395,3 +397,89 @@ Columns: `energy_ref`, per model `energy` and `status`, `subset` and `category`;
 (`"a + 2 b -> c"`). Summary: `WTMAD-2` (`total`, small reactions, large reactions, barrier heights,
 intermolecular NCI, intramolecular NCI, all NCI), `mean_abs_reference` (⟨|ΔE|⟩) and per subset N, |ΔE|_i,
 MAE, RMSE and mean signed error ME (kcal/mol).
+
+## Adsorption — `AdsorptionBenchmark` (`benchmarks/adsorption.py`)
+
+Dataset: `benchmarks/data/adsorption.json` (part of the package; built by `scripts/build_adsorption_dataset.py`),
+54 reaction energies of molecules adsorbing on surfaces, with **experimental** references:
+
+- **ADS41** (S. Mallikarjun Sharada, R. K. B. Karlsson, Y. Maimaiti, J. Voss, T. Bligaard, Phys. Rev. B 100,
+  035439 (2019), Table I): 41 molecular and dissociative adsorption energies on Co, Ni, Cu, Ru, Rh, Pd, Ag, Ir,
+  Pt and Au surfaces, 26 dominated by covalent bonds (`chemisorption`: CO, NO, H2, O2, I2 and the dissociation
+  of NO, CH3I, CH2I2 and ethylene) and 15 by dispersion (`dispersion`: alkanes, aromatics, cyclohexene,
+  methanol, CH3I, water, NH3; 7 with covalent contributions, flagged `mixed`). 39 come from the CE39 database
+  (J. Wellendorff et al., Surf. Sci. 640, 36 (2015)) of single-crystal calorimetry, temperature-programmed
+  desorption and equilibrium-adsorption measurements, two from Gautier et al., Phys. Chem. Chem. Phys. 17,
+  28921 (2015). The reference is the experimental reaction energy minus the zero-point energy change computed
+  with PBE (Wellendorff et al. Tables 4a and 4b): a static energy, directly comparable with the MLIP's.
+- **Surf13** (B. X. Shi et al., Nat. Chem. 17, 1688 (2025)): CH4, C2H6, CO, CO2, H2O, N2O and NH3 on MgO(001),
+  CH4, CO2, H2O and CH3OH on rutile TiO2(110), H2O and NH3 on anatase TiO2(101) — the 13 single-molecule systems
+  of the paper's Surf13 set. Surf13 itself is a set of CCSD(T) interaction energies; here its systems get the
+  experimental adsorption enthalpies that the paper collected and re-analysed with system-specific
+  pre-exponential factors (SI Table 32, mostly temperature-programmed desorption), minus the zero-point,
+  thermal and −RT contributions of the paper's DFT ensemble (SI Table 30): E_ref = H_ads − ΔH, ΔH = E_ZPV +
+  E_T − RT. The enthalpies, their uncertainties (2σ, 0.02–0.18 eV) and ΔH are kept in the dataset.
+
+**Configurations.** Every adsorbed configuration is fixed by the dataset; the benchmark searches no sites. The
+choices follow the reference studies, checked against their figures and structures (the script and the
+`configuration` note of every entry give the source):
+
+- ADS41: sites, coverages (supercells) and four-layer slabs (bottom two layers fixed) of Wellendorff et al.
+  (SI Fig. S1, Table 3) and Sharada et al. (Appendix A: 3x3 slab for ethylene, 4x4 for naphthalene); fcc and
+  hcp hollows as in Araujo et al., Nat. Commun. 13, 6853 (2022), Table 3. Dissociated molecules are separate
+  adlayers, each on its own slab, as in CE39. Where Araujo et al. showed the original model to miss the state
+  of the experiment, their model is used instead: water on Pt(111) as the 2/3 ML hexagonal H-down bilayer (6
+  H2O per 3x3 cell; CE39 used one molecule at 1/4 ML), CH and CH3 on Pt(111) at 1/16 ML, and benzene (in
+  their chemisorbed geometry, SI Supplementary Note 1) and cyclohexene on five-layer Pt(111) slabs with four
+  relaxed layers. Heights come from typical DFT bond lengths.
+- Surf13: the relaxed revPBE-D4 structures that Shi et al. published (GitHub benshi97/Data_autoSKZCAM at
+  commit `b12d501`, CC BY 4.0), the adsorbate atoms kept at their positions relative to the surface atom they
+  bind to; the slabs are those of the paper (MgO(001) 2x2 conventional cells, four layers with two fixed;
+  rutile(110) p(4x2), five O-Ti-O trilayers with three fixed; anatase(101) 3x1, four O-Ti-O blocks with one
+  fixed), which `matcalc.surfaces` reproduces atom by atom from the bulk crystals. CO2 on MgO(001) is the
+  chemisorbed carbonate, the state that Shi et al. assign to the measurement (Chakradhar and Burghaus);
+  Surf13 holds the physisorbed state, whose measured enthalpy the paper questions.
+
+1. **Bulk relaxation** of the 13 crystals (atoms and cell, keeping the space group, `fmax` on the atoms and the
+   cell), from experimental lattice constants: every MLIP works with its own lattice constants, as every
+   functional of the references did.
+2. **Slabs** cut from the relaxed crystals (`matcalc.surfaces`: ASE's builders for fcc(111), fcc(100) and
+   hcp(0001); oxide slabs stacked from an oriented cell of the crystal and terminated where the stacked unit
+   carries no dipole), 10 Å of vacuum on each side, and **relaxed** in their fixed cells with the bottom layers
+   fixed (FIRE on the atoms alone).
+3. **Adsorbed slabs**: the adsorbates placed at fixed offsets from their anchor (a site or a surface atom of
+   the relaxed slab), relaxed in the fixed cell, the bottom layers still fixed; the **gas-phase molecules**
+   relaxed in a 50 Å box (O2 and NO carry their spin multiplicity in `Atoms.info`). All relaxations stop at
+   `fmax` = 0.02 eV/Å (Sharada et al.) or after `max_steps` = 1000 FIRE steps.
+4. **Reaction energy** ΔE = Σ_i c_i E_i (eV) of the reaction as written in the dataset
+   (`properties/adsorption.py`); for D2O, H2O is computed.
+
+A relaxation that reaches the step limit still gives a prediction; the status names it (`ok (not converged:
+...)`), including the crystal or slab it was built on. A failed relaxation fails every reaction that uses the
+structure. `displacement` is the largest distance an adsorbate atom moved in the relaxations of the reaction;
+above 1 Å the adsorbate has left its starting configuration (site, orientation, or desorbed, dissociated), which
+the summary counts as `n_moved`. `subsets` selects ADS41 and/or Surf13; `elements` skips reactions with
+other elements (status `skipped: ...`).
+
+Columns: `energy_exp`, per model `energy`, `displacement` and `status`, and `subset`, `category`
+(`chemisorption`/`dispersion` for ADS41, `MgO`/`TiO2` for Surf13), `mixed`, `adsorbates` (the adsorbed
+fragments the reaction forms); `formula` is the reaction. Summary: MAE, RMSE and mean signed error ME (eV) over
+all reactions, per subset and per category, the ADS41 errors per adsorbed fragment (the error divided by
+`adsorbates`, the scale of Sharada et al.'s Table III), and the counts.
+
+The MLIP is evaluated as given. Functionals without dispersion underbind the dispersion-dominated reactions and the
+physisorbed molecules of Surf13 (PBE by 0.46 eV and RPBE by 0.77 eV on average for the 15 dispersion-dominated
+reactions of ADS41, Sharada et al.'s Table II): an MLIP that reproduces such a functional needs a dispersion
+correction (D3, D4) added to it, as the functionals that describe these systems well include one — with ASE's
+`SumCalculator` (for example with torch-dftd's `TorchDFTD3Calculator`), or with TorchSim's `SumModel` and
+`D3DispersionModel`, which needs the D3 reference parameters (those of torch-dftd: `validation/mace_models.py`),
+with the damping parameters of the functional the MLIP was trained on. An MLIP can also bind these molecules
+without describing dispersion: MACE-OMAT-0, trained on PBE energies of bulk crystals, binds them about as strongly
+as PBE+D3. MLIPs trained on Materials Project-compatible data (OMat24, MPtrj), which compute structures that hold O
+and Co, Cr, Fe, Mn, Mo, Ni, V or W with GGA+U and the metals with GGA, can put O atoms on these metals on the GGA+U
+energy scale: with MACE-OMAT-0, and with MACE-MH-1's OMat head, the O atoms of CO, NO and O adatoms leave the Ni
+and Co surfaces ([validation.md](validation.md), section 13), which `displacement` flags.
+
+The relaxations of slabs and adsorbed slabs need the fixed-cell mode of the simulators, `relax(...,
+relax_cell=False)`: FIRE on the atoms alone, atoms held by an ASE `FixAtoms` constraint kept in place (TorchSim's
+`FixAtoms` in `TorchSimSimulator`), step for step as in ASE ([validation.md](validation.md), section 13).

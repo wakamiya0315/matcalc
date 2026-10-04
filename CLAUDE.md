@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A fork of materialyzeai/matcalc reduced to the four benchmarks (Equilibrium, Elasticity, Phonon,
 Softening), plus three Matbench Discovery tasks (Discovery: WBM stability and geometry; Kappa: κ_SRME; Diatomics: dimer curves)
 and three molecular tasks as MLIPAudit computes them (Noncovalent: NCI Atlas interaction energies;
-Conformers: Folmsbee–Hutchison conformer energies; Reactions: RDB7 barrier heights), plus GMTKN55 (WTMAD-2).
+Conformers: Folmsbee–Hutchison conformer energies; Reactions: RDB7 barrier heights), plus GMTKN55 (WTMAD-2) and
+Adsorption (ADS41 and the Surf13 systems, against experiment, in configurations fixed by the dataset).
 `main` is this fork (the refactoring and the TorchSim simulator); changes reach it through
 pull requests from feature branches, and CI (`.github/workflows/`) runs ruff, mypy and the CPU tests on
 them. `upstream-main` mirrors upstream's `main` and is never committed to (update it with
@@ -33,6 +34,8 @@ python scripts/build_phonon_dataset.py temp/alexandria src/matcalc/benchmarks/da
 python scripts/build_kappa_dataset.py temp/phonondb-pbe temp/matbench-discovery/<structures>.extxyz \
     temp/matbench-discovery/<published kappas>.json.gz src/matcalc/benchmarks/data/phonondb-pbe-kappa.json.gz \
     --workers 4 --cache temp/kappa-cache   # about 45 min on 10 cores; the cache keeps finished compounds
+python scripts/build_adsorption_dataset.py src/matcalc/benchmarks/data/adsorption.json --images temp/adsorption
+    # downloads Shi et al.'s structures once (MD5-checked); --images draws every configuration for checking
 ```
 
 `temp/` (git-ignored) holds downloads such as Alexandria's phonopy files. Heavy runs and GPU tests are done
@@ -47,7 +50,7 @@ benchmark with MACE.
   result table (`<quantity>_DFT`, or `<quantity>_ref` with `reference_label = "ref"` for the coupled-cluster
   references of the molecular benchmarks; `<quantity>_<model>`, `status_<model>`), `summarize()` and
   per-stage timings (`with self.stage(name):`). `Material.settings` carries DFT settings a benchmark reuses.
-- `benchmarks/{equilibrium,elasticity,phonon,softening,discovery,kappa,diatomics,noncovalent,conformers,reactions,gmtkn55}.py` — one benchmark each. `read_entries()` parses
+- `benchmarks/{equilibrium,elasticity,phonon,softening,discovery,kappa,diatomics,noncovalent,conformers,reactions,gmtkn55,adsorption}.py` — one benchmark each. `read_entries()` parses
   the dataset; `evaluate(materials, simulator)` is the recipe: stages over all materials of a chunk.
   `benchmarks/data/alexandria-pbe-phonon.json.gz` is the Phonon dataset (unit cells, supercell and
   primitive matrices, displacements, C_V and stability of the DFT calculations);
@@ -58,16 +61,23 @@ benchmark with MACE.
   Noncovalent, Conformers and GMTKN55 read files pinned to a commit on GitHub, Reactions a Zenodo file of RDB7
   (`datasets.download_file`, MD5-checked); their molecules sit in a 50 Å periodic box (`structures.molecule_in_box`) with the total
   charge and spin multiplicity in `Atoms.info`, which `TorchSimSimulator` passes into the TorchSim state.
+  Adsorption reads `benchmarks/data/adsorption.json` (crystals, slabs, molecules, adsorbed structures as offsets
+  from an anchor site or surface atom, and the reactions as coefficients of these structures); the configurations
+  are decided in `scripts/build_adsorption_dataset.py` (sources cited per structure), not searched at run time.
+  It relaxes crystals (cell, symmetry kept), then slabs cut from them, then adsorbed slabs and molecules.
 - `properties/` — physics as pure functions with no model code (elastic fit, phonopy, formation energy,
   softening scale, fingerprints). Keep them independent of the simulator.
 - `simulation/` — the simulator interface (`relax`, `single_point`, result dataclasses in `base.py`) and
   `ASESimulator` (FIRE + FrechetCellFilter, optionally ASE's `FixSymmetry`, one structure at a time; the
-  reference implementation). `as_simulator()` accepts a simulator, an ASE calculator or a TorchSim model.
+  reference implementation). `relax(..., relax_cell=False)` runs FIRE on the atoms alone in a fixed cell and
+  keeps ASE `FixAtoms` constraints (slabs); single points ignore constraints. `as_simulator()` accepts a
+  simulator, an ASE calculator or a TorchSim model.
 - `simulation/torchsim.py` — `TorchSimSimulator`: batched `relax` (in-flight FIRE + Frechet filter,
   optionally TorchSim's `FixSymmetry`) and `single_point` (packed batches). It must stay step-for-step
   identical to `ASESimulator`: the FIRE step wrapper (`ase_consistent_fire_step`), `ase_convergence` and
   `converged_before_relaxing` exist for that and are checked by `tests/test_simulation_torchsim.py` (same
-  energies and step counts as ASE, with and without the symmetry constraint). The batch capacity is
+  energies and step counts as ASE, with and without the symmetry constraint, and in a fixed cell with fixed atoms,
+  which become TorchSim's `FixAtoms`; other ASE constraints are refused). The batch capacity is
   derived from TorchSim's memory probes of the smallest and the largest structure (cached), which bound
   the memory of every structure of a call (`memory_shares`, `batch_capacity`); after running out of memory
   the capacity is lowered.
@@ -76,8 +86,9 @@ benchmark with MACE.
   (`split_into_parts`) and the CPU work of one part runs while the GPU computes the next. Scripts that use
   `workers > 1` need an `if __name__ == "__main__":` guard.
 - `datasets.py` (Hugging Face, Figshare and GitHub downloads, `sample_subset`); `structures.py`
-  (pymatgen/ASE conversions, `molecule_in_box`); `scripts/build_phonon_dataset.py`,
-  `scripts/build_kappa_dataset.py`.
+  (pymatgen/ASE conversions, `molecule_in_box`); `surfaces.py` (bulk crystals, metal slabs from ASE's builders,
+  oxide slabs from an oriented bulk cell with Tasker's non-polar termination, anchors and adsorbate placement);
+  `scripts/build_phonon_dataset.py`, `scripts/build_kappa_dataset.py`, `scripts/build_adsorption_dataset.py`.
 
 ## Conventions
 

@@ -3,8 +3,12 @@
 A *simulator* evaluates the potential energy surface (PES) of a machine-learning interatomic
 potential (MLIP). The benchmarks only ever ask it for two things:
 
-- ``relax``: relax the atomic positions and the cell of many structures;
+- ``relax``: relax the atomic positions and the cell of many structures (or only the positions, in a
+  fixed cell);
 - ``single_point``: energy, forces and stress of many structures at fixed geometry.
+
+Atoms held in place by an ASE ``FixAtoms`` constraint (structures given as ASE ``Atoms``) do not move
+in a relaxation, as in ASE: their forces count as zero.
 
 Units follow ASE: energies in eV, forces in eV/Å, stresses in eV/Å^3.
 """
@@ -60,14 +64,16 @@ class RelaxResult:
     Attributes:
         structure: The relaxed structure (``None`` if the relaxation failed).
         energy: Potential energy of the relaxed cell (eV).
-        forces: Forces at the relaxed geometry, shape ``(n_atoms, 3)`` (eV/Å).
-        stress: Stress at the relaxed geometry, shape ``(3, 3)`` (eV/Å^3).
+        forces: Forces at the relaxed geometry, shape ``(n_atoms, 3)`` (eV/Å); zero on fixed atoms.
+        stress: Stress at the relaxed geometry, shape ``(3, 3)`` (eV/Å^3); ``None`` when the cell was
+            kept fixed.
         max_force: Largest force on any atom at the end (eV/Å).
         converged: ``True`` when ``max_force <= fmax``. As in upstream matcalc, only the atomic
             forces are checked here, not the residual stress on the cell.
         n_steps: Number of optimizer steps taken.
         optimizer_converged: The optimizer's own stopping criterion was met: every force on the atoms
-            and on the cell of the Frechet cell filter is below ``fmax`` (the Phonon benchmark's test).
+            and, when the cell relaxes, on the cell of the Frechet cell filter is below ``fmax`` (the
+            Phonon benchmark's test).
         error: Why the relaxation failed, or ``None`` if it ran.
     """
 
@@ -105,6 +111,7 @@ class Simulator(Protocol):
         max_steps: int,
         fix_symmetry: bool = False,
         symprec: float = 0.01,
+        relax_cell: bool = True,
     ) -> list[RelaxResult]:
         """Relax atomic positions and cell of every structure (FIRE with a Frechet cell filter).
 
@@ -115,6 +122,8 @@ class Simulator(Protocol):
             fix_symmetry: Keep the space group of each structure (forces, stress and steps are
                 symmetrized, as ASE's ``FixSymmetry`` constraint does).
             symprec: Symmetry tolerance used to find the space group (Å).
+            relax_cell: Relax the cell as well; with ``False`` only the atoms move, in the fixed cell
+                (FIRE on the atoms alone, without cell filter and without computing the stress).
 
         Returns:
             One ``RelaxResult`` per structure, in input order.

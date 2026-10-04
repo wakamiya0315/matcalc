@@ -306,3 +306,27 @@ def test_reaction_energetics_count_the_products_together() -> None:
     assert (stats["MAE"], stats["ME"], stats["n"]) == (2.0, -1.0, 2)
     assert stats["RMSE"] == pytest.approx(np.sqrt(5.0))
     assert error_statistics([])["n"] == 0
+
+
+def test_reaction_energy_counts_products_positive_and_reactants_negative() -> None:
+    from matcalc.properties.adsorption import reaction_energy
+
+    energies = {"N/Ni": -50.0, "O/Ni": -52.0, "Ni": -45.0, "NO": -12.0}
+    terms = {"N/Ni": 1, "O/Ni": 1, "Ni": -2, "NO": -1}
+    assert reaction_energy(terms, energies) == pytest.approx(-50 - 52 + 90 + 12)
+    assert reaction_energy({"a": 2 / 9, "b": -2 / 9}, {"a": 9.0, "b": 0.0}) == pytest.approx(2.0)
+
+
+def test_adsorbate_displacement_follows_the_periodic_boundaries() -> None:
+    from ase import Atoms
+
+    from matcalc.properties.adsorption import adsorbate_displacement
+
+    atoms = Atoms("Cu2O", positions=[[0, 0, 0], [1.5, 0, 0], [9.9, 5.0, 3.0]], cell=[10, 10, 20], pbc=True)
+    atoms.set_tags([1, 1, 0])
+    moved = atoms.positions.copy()
+    moved[2] = [0.1, 5.0, 3.2]  # across the boundary: 0.2 Å in x, 0.2 Å in z
+    moved[0] = [0.0, 0.0, 5.0]  # a slab atom moving does not count
+    assert adsorbate_displacement(atoms, moved) == pytest.approx(np.hypot(0.2, 0.2))
+    atoms.set_tags(1)
+    assert adsorbate_displacement(atoms, moved) == 0.0
